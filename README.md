@@ -26,18 +26,64 @@ The phishing investigation workflow consists of three primary steps: Ingestion, 
 
 ### Step 1 — Ingestion
 
-1. A Jira webhook fires when a new ticket is created on the `SECOPS` board
-2. The [`/api/webhooks/jira`](api/webhooks/jira) Next.js API route receives the payload
-3. The Google Message ID is extracted from the ticket
+1. An analyst clicks **"Run Ingestion"** on the dashboard (manual trigger — no input required)
+2. The system **queries the Jira API** for all open/unprocessed tickets on the SECOPS board where:
+   - Reporter = `csirt@snapdocs.com` **OR** Summary contains `"Alert: User-reported phishing"`
+3. For each ticket found, the system **parses the Description field** to extract: sender email (Actor), reporter email (Reported by), and activity date/time
+4. For each ticket, the system **queries the Google Workspace API** (Gmail API or Alert Center API) using the extracted sender, reporter, and date to find the matching email
+5. The system retrieves the **Google Message ID** and full email details (headers, body, links) for each ticket
+
+**Example Jira Ticket Structure:**
 
 ```
-┌─────────────┐      Webhook       ┌──────────────────────┐
-│  Jira SECOPS │ ──────────────────▶ │  /api/webhooks/jira  │
-│    Board     │                    │  (Next.js API Route) │
-└─────────────┘                    └──────────────────────┘
+Title/Summary: Alert: User-reported phishing for docusign.prod.pa@snapdocs.com
+
+Reporter: csirt@snapdocs.com (raised via Email)
+
+Description:
+  Activity date: Wednesday, Dec 10, 2025, 9:01:48 PM (UTC)
+  Actor: docusign.prod.pa@snapdocs.com
+  Reported by: bob.jones@snapdocs.com
+  Severity: HIGH
+  Please view the alert center for additional details...
+```
+
+The system parses the **Description** field (not the summary/title) to extract: Actor (sender email), Reported by (recipient email), and Activity date. The sender email can also be cross-referenced from the ticket title as a quick check.
+
+```
+┌─────────────┐   "Run Ingestion"   ┌──────────────────────┐
+│   Analyst   │ ──────────────────▶ │  /api/ingest/start   │
+│  Dashboard  │                     │  (Next.js API Route) │
+└─────────────┘                     └──────────────────────┘
+                                            │
+                                            ▼
+                                   ┌──────────────────────┐
+                                   │  Query Jira API      │
+                                   │  reporter=csirt@     │
+                                   │  snapdocs.com OR     │
+                                   │  summary contains    │
+                                   │  "User-reported      │
+                                   │   phishing"          │
+                                   └──────────────────────┘
+                                            │
+                                            ▼
+                                   For each ticket found:
+                                   Parse Description field
+                                   → Sender (Actor)
+                                   → Reporter (Reported by)
+                                   → Activity Date
+                                            │
+                                            ▼
+                                   ┌──────────────────────┐
+                                   │  Query Google API    │
+                                   │  per ticket          │
+                                   │  (Gmail/Alert Ctr)   │
+                                   └──────────────────────┘
                                             │
                                             ▼
                                    Extract Google Message ID
+                                   + Full Email Details
+                                   (for each ticket)
 ```
 
 ### Step 2 — Analysis
@@ -162,8 +208,9 @@ https://admin.google.com/ac/apps/gmail/manageaddresslist?addressListType=2
 
 ### Phase 2: Backend Integration
 
-- [ ] Build the Jira webhook ingestion endpoint ([`/api/webhooks/jira`](api/webhooks/jira))
-- [ ] Implement Google Workspace API integration (Domain-Wide Delegation, fetch raw email)
+- [ ] Build the manual trigger ingestion endpoint ([`/api/ingest/start`](api/ingest/start)) for analyst-initiated workflow
+- [ ] Implement Jira API integration to fetch all phishing tickets by reporter/summary filter (reporter = `csirt@snapdocs.com` OR summary contains `"Alert: User-reported phishing"`) and parse ticket description data
+- [ ] Implement Google Workspace API integration (Domain-Wide Delegation, email search by sender/recipient/date, fetch raw email)
 - [ ] Implement VirusTotal OSINT enrichment module
 - [ ] Implement OpenRouter AI analysis module (system prompt, JSON output parsing)
 
@@ -196,7 +243,6 @@ https://admin.google.com/ac/apps/gmail/manageaddresslist?addressListType=2
 | `JIRA_EMAIL` | Service account email for Jira API authentication |
 | `JIRA_API_TOKEN` | Jira API token for the service account |
 | `JIRA_SECOPS_PROJECT_KEY` | Jira project key for the SECOPS board |
-| `JIRA_WEBHOOK_SECRET` | Secret token to validate incoming Jira webhook payloads |
 | `GOOGLE_CLIENT_EMAIL` | Google service account email (for Domain-Wide Delegation) |
 | `GOOGLE_PRIVATE_KEY` | Google service account private key (PEM format) |
 | `GOOGLE_SUBJECT_EMAIL` | The email address to impersonate via Domain-Wide Delegation |
@@ -215,7 +261,6 @@ JIRA_HOST=yourorg.atlassian.net
 JIRA_EMAIL=service-account@yourorg.com
 JIRA_API_TOKEN=your-jira-api-token
 JIRA_SECOPS_PROJECT_KEY=SECOPS
-JIRA_WEBHOOK_SECRET=your-webhook-secret
 
 # Google Workspace Configuration
 GOOGLE_CLIENT_EMAIL=service-account@your-project.iam.gserviceaccount.com
@@ -246,47 +291,51 @@ DATABASE_URL=postgresql://user:password@localhost:5432/phishing_investigation
 │                           SOAR Platform Architecture                         │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-                              ┌─────────────┐
-                              │    Jira     │
-                              │  (Webhook)  │
-                              └──────┬──────┘
-                                     │
-                                     ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          Next.js Application                                 │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                        API Routes                                      │  │
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐   │  │
-│  │  │ /webhooks/jira  │  │ /api/analyze    │  │ /api/remediate      │   │  │
-│  │  │ (Ingestion)     │  │ (Analysis)      │  │ (Actions)           │   │  │
-│  │  └─────────────────┘  └─────────────────┘  └─────────────────────┘   │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                        Frontend Dashboard                              │  │
-│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐   │  │
-│  │  │  Alert Queue    │  │  Alert Detail   │  │  Action Buttons     │   │  │
-│  │  │  (Table View)   │  │  (Full View)    │  │  (Remediate/Close)  │   │  │
-│  │  └─────────────────┘  └─────────────────┘  └─────────────────────┘   │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────┘
-         │                    │                    │
-         ▼                    ▼                    ▼
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│   Google    │      │ VirusTotal  │      │ OpenRouter  │
-│  Workspace  │      │   (OSINT)   │      │    (LLM)    │
-│    API      │      │    API      │      │    API      │
-└─────────────┘      └─────────────┘      └─────────────┘
+┌─────────────┐  "Run Ingestion"   ┌──────────────────────────────────────────┐
+│   Analyst   │ ──────────────────▶ │           Next.js Application           │
+│  Dashboard  │  (No Input Needed)  │                                          │
+└─────────────┘                    │  ┌────────────────────────────────────┐  │
+                                   │  │           API Routes               │  │
+                                   │  │  ┌──────────────────────────────┐  │  │
+                                   │  │  │  /api/ingest/start           │  │  │
+                                   │  │  │  (Manual Trigger Ingestion)  │  │  │
+                                   │  │  └──────────────────────────────┘  │  │
+                                   │  │  ┌──────────────────────────────┐  │  │
+                                   │  │  │  /api/analyze                │  │  │
+                                   │  │  │  (Analysis)                  │  │  │
+                                   │  │  └──────────────────────────────┘  │  │
+                                   │  │  ┌──────────────────────────────┐  │  │
+                                   │  │  │  /api/remediate              │  │  │
+                                   │  │  │  (Actions)                   │  │  │
+                                   │  │  └──────────────────────────────┘  │  │
+                                   │  └────────────────────────────────────┘  │
+                                   │  ┌────────────────────────────────────┐  │
+                                   │  │        Frontend Dashboard          │  │
+                                   │  │  ┌─────────────┐ ┌──────────────┐  │  │
+                                   │  │  │ Alert Queue │ │ Alert Detail │  │  │
+                                   │  │  └─────────────┘ └──────────────┘  │  │
+                                   │  └────────────────────────────────────┘  │
+                                   └──────────────────────────────────────────┘
+                                            │                    │
+                    ┌───────────────────────┼────────────────────┼───────────────┐
+                    │                       │                    │               │
+                    ▼                       ▼                    ▼               ▼
+           ┌─────────────┐          ┌─────────────┐      ┌─────────────┐ ┌─────────────┐
+           │    Jira     │          │   Google    │      │ VirusTotal  │ │ OpenRouter  │
+           │    API      │          │  Workspace  │      │   (OSINT)   │ │    (LLM)    │
+           │ (Fetch/Post)│          │    API      │      │    API      │ │    API      │
+           └─────────────┘          └─────────────┘      └─────────────┘ └─────────────┘
 ```
 
 ---
 
 ## Security Considerations
 
-- **Webhook Validation:** All incoming Jira webhooks should validate the `JIRA_WEBHOOK_SECRET` to prevent unauthorized submissions
 - **Domain-Wide Delegation:** Google Workspace integration uses Domain-Wide Delegation with a service account; ensure the service account has only the minimum required scopes
 - **API Key Protection:** All API keys and secrets must be stored securely and never committed to version control
 - **Input Sanitization:** All user inputs and external API responses should be sanitized before processing or display
 - **Audit Logging:** Consider implementing audit logs for all remediation actions taken through the platform
+- **Authentication:** Ensure proper authentication is implemented for the manual trigger endpoint to prevent unauthorized workflow initiation
 
 ---
 
