@@ -22,7 +22,7 @@ The system streamlines the phishing response workflow by automatically gathering
 
 ## Workflow Architecture
 
-The phishing investigation workflow consists of three primary steps: Ingestion, Analysis, and Remediation.
+The phishing investigation workflow consists of three primary steps: Ingestion, Analysis, and Analyst Review & Remediation.
 
 ### Step 1 — Ingestion
 
@@ -30,8 +30,8 @@ The phishing investigation workflow consists of three primary steps: Ingestion, 
 2. The system **queries the Jira API** for all open/unprocessed tickets on the SECOPS board where:
    - Reporter = `csirt@snapdocs.com` **OR** Summary contains `"Alert: User-reported phishing"`
 3. For each ticket found, the system **parses the Description field** to extract: sender email (Actor), reporter email (Reported by), and activity date/time
-4. For each ticket, the system **queries the Google Workspace API** (Gmail API or Alert Center API) using the extracted sender, reporter, and date to find the matching email
-5. The system retrieves the **Google Message ID** and full email details (headers, body, links) for each ticket
+4. The system **queries the Google Workspace Alert Center API** using the extracted sender and date to find the exact `messageId` and `rfc2822MessageId` for the phishing alert.
+5. The system uses the **Gmail API** (with Domain-Wide Delegation) to retrieve the full raw email details (headers, body, links) using the exact `messageId`.
 
 **Example Jira Ticket Structure:**
 
@@ -48,7 +48,7 @@ Description:
   Please view the alert center for additional details...
 ```
 
-The system parses the **Description** field (not the summary/title) to extract: Actor (sender email), Reported by (recipient email), and Activity date. The sender email can also be cross-referenced from the ticket title as a quick check.
+The system parses the **Description** field to extract: Actor (sender email), Reported by (recipient email), and Activity date.
 
 ```
 ┌─────────────┐   "Run Ingestion"   ┌──────────────────────┐
@@ -75,15 +75,15 @@ The system parses the **Description** field (not the summary/title) to extract: 
                                             │
                                             ▼
                                    ┌──────────────────────┐
-                                   │  Query Google API    │
-                                   │  per ticket          │
-                                   │  (Gmail/Alert Ctr)   │
+                                   │ Query Alert Ctr API  │
+                                   │ → Get exact messageId│
                                    └──────────────────────┘
                                             │
                                             ▼
-                                   Extract Google Message ID
-                                   + Full Email Details
-                                   (for each ticket)
+                                   ┌──────────────────────┐
+                                   │   Query Gmail API    │
+                                   │ → Get Raw Email      │
+                                   └──────────────────────┘
 ```
 
 ### Step 2 — Analysis
@@ -115,60 +115,40 @@ The analysis phase consists of three parallel data gathering and processing oper
 
 All results are stored and associated with the Jira ticket for later retrieval.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Analysis Pipeline                        │
-├─────────────────────┬───────────────────┬───────────────────────┤
-│   Data Gathering    │  OSINT Enrichment │     AI Analysis       │
-│  (Google Workspace) │   (VirusTotal)    │    (OpenRouter)       │
-├─────────────────────┼───────────────────┼───────────────────────┤
-│ • Email headers     │ • Sender domain   │ • LLM classification  │
-│ • Email body        │ • Sender IP       │ • Confidence score    │
-│ • Embedded links    │ • Extracted URLs  │ • Reasoning           │
-└─────────────────────┴───────────────────┴───────────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │  Store Results  │
-                    │  (Database)     │
-                    └─────────────────┘
-```
+### Step 3 — Analyst Review & Remediation
 
-### Step 3 — Remediation
+The system pauses and waits for human intervention. An analyst reviews the case on the frontend dashboard, which presents a unified view of the threat:
+- **The Raw Email:** Headers, body, and extracted links.
+- **AI Investigation:** The LLM's classification, confidence score, and detailed reasoning.
+- **OSINT Data:** VirusTotal scores for the sender domain, IP, and URLs.
 
-An analyst reviews the case on the frontend dashboard and chooses one of two actions:
+Based on this information, the analyst simply selects one of two actions:
 
-#### "Approve & Remediate"
+#### "Approve & Remediate" (Domain-Wide Purge)
 
-Triggers an API route that performs the following:
+Triggers an API route that performs a fully automated "Search & Destroy" across the entire organization:
 
 1. **Google Workspace Actions:**
-   - Uses Google Workspace Admin SDK to quarantine the message
-   - Adds the sender's email to the "Reject" address list
+   - Uses the Admin SDK Directory API to fetch a list of all active users in the domain.
+   - Loops through every user, using the Gmail API (with Domain-Wide Delegation) to search for the exact `rfc2822MessageId`.
+   - Calls `gmail.users.messages.trash` to delete the malicious email from *any* inbox where it is found.
 
 2. **Jira Actions:**
-   - Posts a structured final comment to the Jira ticket
-   - Transitions the ticket to "Closed"
+   - Posts a structured final comment to the Jira ticket detailing the domain-wide purge.
+   - Transitions the ticket to "Closed".
 
 **Jira Comment Template:**
 
 ```
-Sent to quarantine, triaged in google admin view, reviewed headers
-> checked for other targets inside Snapdocs
+Domain-wide purge executed. Triaged in SecureCatch dashboard, reviewed headers.
 > checked OSINT on IoCs
 > identified extent of compromise
 
 **Results**
 [AI Reasoning and Classification]
 
-**Google Message ID**
-[Google Workspace URL with Message ID]
-
 **Follow up actions taken**
-Added "[Sender Email]" to block list. Message quarantined.
-
-**Google Block List "Reject"**
-https://admin.google.com/ac/apps/gmail/manageaddresslist?addressListType=2
+Executed domain-wide search for RFC2822 Message-ID. Message successfully trashed from all affected user inboxes.
 ```
 
 #### "Mark as Safe/Close"
@@ -191,8 +171,8 @@ https://admin.google.com/ac/apps/gmail/manageaddresslist?addressListType=2
               │                           │
               ▼                           ▼
     ┌─────────────────┐         ┌─────────────────┐
-    │ Quarantine Msg  │         │  Close Ticket   │
-    │ Block Sender    │         │  (False Pos.)   │
+    │ Domain-Wide     │         │  Close Ticket   │
+    │ Purge (Trash)   │         │  (False Pos.)   │
     │ Close Jira      │         │                 │
     └─────────────────┘         └─────────────────┘
 ```
@@ -209,8 +189,9 @@ https://admin.google.com/ac/apps/gmail/manageaddresslist?addressListType=2
 ### Phase 2: Backend Integration
 
 - [ ] Build the manual trigger ingestion endpoint ([`/api/ingest/start`](api/ingest/start)) for analyst-initiated workflow
-- [ ] Implement Jira API integration to fetch all phishing tickets by reporter/summary filter (reporter = `csirt@snapdocs.com` OR summary contains `"Alert: User-reported phishing"`) and parse ticket description data
-- [ ] Implement Google Workspace API integration (Domain-Wide Delegation, email search by sender/recipient/date, fetch raw email)
+- [ ] Implement Jira API integration to fetch all phishing tickets by reporter/summary filter and parse ticket description data
+- [ ] Implement Google Workspace Alert Center API integration to extract exact `messageId` and `rfc2822MessageId`
+- [ ] Implement Google Workspace Gmail API integration (Domain-Wide Delegation) to fetch raw email
 - [ ] Implement VirusTotal OSINT enrichment module
 - [ ] Implement OpenRouter AI analysis module (system prompt, JSON output parsing)
 
@@ -225,7 +206,7 @@ https://admin.google.com/ac/apps/gmail/manageaddresslist?addressListType=2
 
 ### Phase 5: Actions & Remediation
 
-- [ ] Implement "Approve & Remediate" action (Google quarantine + blocklist + Jira comment/close)
+- [ ] Implement "Approve & Remediate" action (Admin SDK Directory API user loop + Gmail API domain-wide trash + Jira comment/close)
 - [ ] Implement "Mark as Safe/Close" action (Jira false positive close)
 
 ### Phase 6: Testing & Deployment
