@@ -1,0 +1,60 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model PhishingAlert {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Jira ticket info
+  jiraTicketId    String   @unique
+  jiraTicketKey   String
+  jiraTicketUrl   String?
+  jiraSummary     String
+
+  // Parsed from Jira description
+  actorEmail      String   // Sender (Actor)
+  reportedByEmail String   // Reporter (Reported by)
+  activityDate    DateTime?
+
+  // Email data from Gmail API
+  googleMessageId     String?
+  rfc2822MessageId    String?
+  rawEmailHeaders     String?  // JSON string
+  rawEmailBody        String?
+  extractedLinks      String?  // JSON array string
+
+  // VirusTotal OSINT
+  vtSenderDomain      String?
+  vtSenderDomainScore String?  // JSON
+  vtSenderIp          String?
+  vtSenderIpScore     String?  // JSON
+  vtUrlScores         String?  // JSON array
+
+  // AI Analysis
+  aiClassification    String?  // "Phishing" | "Spam" | "Safe"
+  aiConfidenceScore   Int?
+  aiReasoning         String?
+
+  // Workflow status
+  status              String   @default("PENDING")
+  // PENDING -> INGESTED -> ANALYZING -> AWAITING_REVIEW -> REMEDIATED | CLOSED
+
+  // Analyst action
+  analystAction       String?  // "REMEDIATE" | "CLOSE"
+  analystNote         String?
+  remediatedAt        DateTime?
+  closedAt            DateTime?
+
+  // Domain-wide purge results
+  purgeResults        String?  // JSON: { usersSearched: number, usersAffected: string[] }
+}
