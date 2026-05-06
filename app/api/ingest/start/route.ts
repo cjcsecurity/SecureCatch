@@ -9,12 +9,26 @@
  * 5. Stores all data in the database as a PhishingAlert record
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { fetchPhishingTickets, parseTicketDescription } from "@/lib/jira";
 import { findAlertByActor, fetchEmailData } from "@/lib/google";
+import { requireApiToken } from "@/lib/auth/api-token";
 
-export async function POST() {
+const rateLimitMap = new Map<string, number>();
+
+export async function POST(req: NextRequest) {
+  const denied = requireApiToken(req);
+  if (denied) return denied;
+
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const now = Date.now();
+  const last = rateLimitMap.get(ip) ?? 0;
+  if (now - last < 10_000) {
+    return NextResponse.json({ error: "rate limit exceeded" }, { status: 429 });
+  }
+  rateLimitMap.set(ip, now);
+
   const results = {
     processed: 0,
     skipped: 0,
@@ -29,7 +43,7 @@ export async function POST() {
       tickets = await fetchPhishingTickets();
     } catch (error) {
       return NextResponse.json(
-        { error: `Failed to fetch Jira tickets: ${String(error)}` },
+        { error: "Failed to fetch Jira tickets" },
         { status: 500 }
       );
     }
@@ -137,7 +151,8 @@ export async function POST() {
         results.processed++;
         results.newAlerts.push(ticket.key);
       } catch (ticketError) {
-        results.errors.push(`Ticket ${ticket.key}: ${String(ticketError)}`);
+        console.error(`Ticket ${ticket.key} processing error:`, ticketError);
+        results.errors.push(`Ticket ${ticket.key}: processing failed`);
       }
     }
 
@@ -148,7 +163,7 @@ export async function POST() {
   } catch (error) {
     console.error("Ingestion error:", error);
     return NextResponse.json(
-      { error: `Ingestion failed: ${String(error)}` },
+      { error: "Ingestion failed" },
       { status: 500 }
     );
   }

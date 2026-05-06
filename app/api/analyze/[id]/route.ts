@@ -12,11 +12,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { enrichWithOSINT } from "@/lib/virustotal";
 import { analyzeEmail } from "@/lib/ai";
+import { requireApiToken } from "@/lib/auth/api-token";
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireApiToken(request);
+  if (denied) return denied;
   const { id } = await params;
 
   try {
@@ -73,7 +76,7 @@ export async function POST(
     } catch (aiError) {
       console.error("AI analysis failed:", aiError);
       return NextResponse.json(
-        { error: `AI analysis failed: ${String(aiError)}` },
+        { error: "AI analysis failed" },
         { status: 500 }
       );
     }
@@ -103,7 +106,7 @@ export async function POST(
   } catch (error) {
     console.error("Analysis error:", error);
     return NextResponse.json(
-      { error: `Analysis failed: ${String(error)}` },
+      { error: "Analysis failed" },
       { status: 500 }
     );
   }

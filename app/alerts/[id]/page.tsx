@@ -130,17 +130,24 @@ export default function AlertDetailPage({ params }: PageProps) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {alert.jiraTicketUrl && (
-              <a
-                href={alert.jiraTicketUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex h-7 items-center gap-1 rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <ExternalLink className="h-3.5 w-3.5" />
-                View in Jira
-              </a>
-            )}
+            {alert.jiraTicketUrl && (() => {
+              let safeHref: string | null = null;
+              try {
+                const parsed = new URL(alert.jiraTicketUrl);
+                if (parsed.protocol === "https:") safeHref = alert.jiraTicketUrl;
+              } catch {}
+              return safeHref ? (
+                <a
+                  href={safeHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-7 items-center gap-1 rounded-[min(var(--radius-md),12px)] border border-border bg-background px-2.5 text-[0.8rem] font-medium transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  View in Jira
+                </a>
+              ) : null;
+            })()}
             {!isCompleted && (
               <Button
                 variant="outline"

@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SecureCatch — SOAR Platform",
-  description: "Security Orchestration, Automation, and Response for phishing alerts",
+  title: "SecureCatch — Phishing Alerts",
+  description: "Phishing alert triage and remediation dashboard",
 };
 
 export default function RootLayout({

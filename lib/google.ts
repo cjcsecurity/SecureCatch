@@ -94,7 +94,7 @@ export async function findAlertByActor(
     return null;
   } catch (error) {
     console.error("Alert Center API error:", error);
-    throw new Error(`Alert Center API failed: ${String(error)}`);
+    throw new Error("Alert Center API failed");
   }
 }
 

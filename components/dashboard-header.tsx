@@ -48,7 +48,7 @@ export function DashboardHeader({ onRefresh }: DashboardHeaderProps) {
           </div>
           <div>
             <h1 className="text-lg font-semibold tracking-tight">SecureCatch</h1>
-            <p className="text-xs text-muted-foreground">SOAR Platform — Phishing Investigation</p>
+            <p className="text-xs text-muted-foreground">Phishing Alert Triage</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

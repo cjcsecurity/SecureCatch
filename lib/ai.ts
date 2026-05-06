@@ -179,11 +179,6 @@ Classify this email and provide your detailed reasoning.`;
     };
   } catch {
     console.error("Failed to parse AI response:", content);
-    // Return a fallback response
-    return {
-      classification: "Spam",
-      confidence_score: 0,
-      reasoning: `AI analysis failed to parse response. Raw output: ${content.slice(0, 500)}`,
-    };
+    throw new Error("AI analysis unavailable");
   }
 }

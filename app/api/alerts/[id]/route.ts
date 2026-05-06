@@ -5,11 +5,14 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireApiToken } from "@/lib/auth/api-token";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireApiToken(request);
+  if (denied) return denied;
   const { id } = await params;
 
   try {

@@ -95,15 +95,26 @@ export function AlertQueue({ refreshKey }: AlertQueueProps) {
               onClick={() => router.push(`/alerts/${alert.id}`)}
             >
               <TableCell className="font-mono text-sm">
-                <a
-                  href={alert.jiraTicketUrl ?? "#"}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-blue-400 hover:text-blue-300 hover:underline"
-                >
-                  {alert.jiraTicketKey}
-                </a>
+                {(() => {
+                  let safeHref: string | null = null;
+                  try {
+                    const parsed = new URL(alert.jiraTicketUrl ?? "");
+                    if (parsed.protocol === "https:") safeHref = alert.jiraTicketUrl ?? null;
+                  } catch {}
+                  return safeHref ? (
+                    <a
+                      href={safeHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-blue-400 hover:text-blue-300 hover:underline"
+                    >
+                      {alert.jiraTicketKey}
+                    </a>
+                  ) : (
+                    <span className="text-blue-400">{alert.jiraTicketKey}</span>
+                  );
+                })()}
               </TableCell>
               <TableCell>
                 <span className="text-sm font-medium text-foreground">{alert.actorEmail}</span>

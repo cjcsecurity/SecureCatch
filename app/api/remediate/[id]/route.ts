@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { postJiraComment, closeJiraTicket } from "@/lib/jira";
 import { listAllDomainUsers, trashMessageForUser } from "@/lib/google";
+import { requireApiToken } from "@/lib/auth/api-token";
 
 type RemediateAction = "REMEDIATE" | "CLOSE";
 
@@ -17,6 +18,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireApiToken(request);
+  if (denied) return denied;
   const { id } = await params;
   const body = await request.json() as { action: RemediateAction; note?: string };
   const { action, note } = body;
@@ -43,7 +46,7 @@ export async function POST(
   } catch (error) {
     console.error("Remediation error:", error);
     return NextResponse.json(
-      { error: `Remediation failed: ${String(error)}` },
+      { error: "Remediation failed" },
       { status: 500 }
     );
   }
@@ -74,7 +77,7 @@ async function handleRemediate(
     allUsers = await listAllDomainUsers();
   } catch (error) {
     return NextResponse.json(
-      { error: `Failed to list domain users: ${String(error)}` },
+      { error: "Failed to list domain users" },
       { status: 500 }
     );
   }

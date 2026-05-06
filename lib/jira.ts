@@ -43,8 +43,13 @@ export async function fetchPhishingTickets(): Promise<JiraTicket[]> {
   const { host, email, token, projectKey } = getJiraConfig();
   const auth = getAuthHeader(email, token);
 
+  const csirtEmail = process.env.JIRA_CSIRT_EMAIL;
+  if (!csirtEmail) {
+    throw new Error("Missing required environment variable: JIRA_CSIRT_EMAIL");
+  }
+
   const jql = encodeURIComponent(
-    `project = "${projectKey}" AND (reporter = "csirt@snapdocs.com" OR summary ~ "User-reported phishing") AND status != Done ORDER BY created DESC`
+    `project = "${projectKey}" AND (reporter = "${csirtEmail}" OR summary ~ "User-reported phishing") AND status != Done ORDER BY created DESC`
   );
 
   const url = `https://${host}/rest/api/3/search?jql=${jql}&maxResults=50&fields=id,key,summary,description,status`;
