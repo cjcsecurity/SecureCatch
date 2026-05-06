@@ -34,6 +34,9 @@ cp .env.local.example .env.local
 Then edit `.env.local`:
 
 ```bash
+# API Authentication
+SECURECATCH_API_TOKEN=<output from: openssl rand -hex 32>
+
 # Jira Configuration
 JIRA_HOST=yourorg.atlassian.net          # e.g. snapdocs.atlassian.net
 JIRA_EMAIL=service-account@yourorg.com   # Jira account email
@@ -59,11 +62,38 @@ DATABASE_URL=file:./dev.db
 
 ---
 
-## 3. Google Workspace Service Account Setup
+## 3. API Authentication
+
+SecureCatch protects its API routes with a shared bearer token so only trusted operators or automation can call ingestion, analysis, remediation, and alert endpoints.
+
+Generate a token and set it as `SECURECATCH_API_TOKEN` in `.env.local`:
+
+```bash
+openssl rand -hex 32
+```
+
+Every client request to `/api/*` must include the same token in the `Authorization` header:
+
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:3000/api/alerts
+```
+
+Auth error responses:
+
+| Status | Response | Meaning |
+|--------|----------|---------|
+| `401` | `{"error":"unauthorized"}` | The request is missing the bearer header, uses the wrong token, or sends a malformed `Authorization` value. |
+| `503` | `{"error":"server misconfigured"}` | The server started without `SECURECATCH_API_TOKEN`; add it to `.env.local` and restart the app. |
+
+Different-length tokens are treated as wrong tokens and return `401`; they do not cause a server error.
+
+---
+
+## 4. Google Workspace Service Account Setup
 
 SecureCatch uses a **Google Service Account with Domain-Wide Delegation** to access Gmail, Alert Center, and the Admin SDK on behalf of users.
 
-### 3a. Create a Service Account
+### 4a. Create a Service Account
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/) → **IAM & Admin → Service Accounts**
 2. Click **Create Service Account**
@@ -72,16 +102,16 @@ SecureCatch uses a **Google Service Account with Domain-Wide Delegation** to acc
 5. Click on the new service account → **Keys** tab → **Add Key → Create new key → JSON**
 6. Save the downloaded JSON file — you'll extract `client_email` and `private_key` from it
 
-### 3b. Enable Domain-Wide Delegation
+### 4b. Enable Domain-Wide Delegation
 
 1. In the service account detail page, click **Edit** → check **Enable Google Workspace Domain-wide Delegation**
 2. Save, then note the **Client ID** (numeric ID shown on the service account page)
 
-### 3c. Grant OAuth Scopes in Google Admin
+### 4c. Grant OAuth Scopes in Google Admin
 
 1. Go to [admin.google.com](https://admin.google.com) → **Security → API Controls → Domain-wide delegation**
 2. Click **Add new** and enter:
-   - **Client ID:** (the numeric Client ID from step 3b)
+   - **Client ID:** (the numeric Client ID from step 4b)
    - **OAuth Scopes:**
      ```
      https://www.googleapis.com/auth/gmail.readonly,
@@ -90,14 +120,14 @@ SecureCatch uses a **Google Service Account with Domain-Wide Delegation** to acc
      https://www.googleapis.com/auth/apps.alerts
      ```
 
-### 3d. Enable Required APIs
+### 4d. Enable Required APIs
 
 In Google Cloud Console → **APIs & Services → Enable APIs**:
 - Gmail API
 - Google Workspace Alert Center API
 - Admin SDK API
 
-### 3e. Set Environment Variables
+### 4e. Set Environment Variables
 
 From the downloaded JSON key file:
 
@@ -112,7 +142,7 @@ GOOGLE_ADMIN_EMAIL=<same or another super admin email>
 
 ---
 
-## 4. Jira API Token
+## 5. Jira API Token
 
 1. Go to [id.atlassian.com](https://id.atlassian.com) → **Security → API tokens → Create API token**
 2. Copy the token and set it as `JIRA_API_TOKEN`
@@ -122,7 +152,7 @@ GOOGLE_ADMIN_EMAIL=<same or another super admin email>
 
 ---
 
-## 5. VirusTotal API Key
+## 6. VirusTotal API Key
 
 1. Create an account at [virustotal.com](https://www.virustotal.com)
 2. Go to **Profile → API Key**
@@ -132,7 +162,7 @@ GOOGLE_ADMIN_EMAIL=<same or another super admin email>
 
 ---
 
-## 6. OpenRouter API Key
+## 7. OpenRouter API Key
 
 1. Create an account at [openrouter.ai](https://openrouter.ai)
 2. Go to **Keys → Create key**
@@ -144,7 +174,7 @@ GOOGLE_ADMIN_EMAIL=<same or another super admin email>
 
 ---
 
-## 7. Initialize the Database
+## 8. Initialize the Database
 
 The SQLite database is automatically created. Run migrations to set up the schema:
 
@@ -166,7 +196,7 @@ npx prisma studio
 
 ---
 
-## 8. Start the Application
+## 9. Start the Application
 
 ```bash
 # Development mode (with hot reload)
@@ -232,6 +262,7 @@ For production, switch from SQLite to PostgreSQL:
 | `Missing Google credentials` | Ensure `GOOGLE_CLIENT_EMAIL` and `GOOGLE_PRIVATE_KEY` are set |
 | `Alert Center API failed` | Ensure the service account has the `apps.alerts` scope granted in Google Admin |
 | `Gmail API failed` | Ensure Domain-Wide Delegation is enabled and `gmail.modify` scope is granted |
+| `server misconfigured` from `/api/*` | Set `SECURECATCH_API_TOKEN` in `.env.local` and restart the app |
 | `No tickets found` | Check that your Jira project key is correct and the filter matches your ticket format |
 | `AI parse error` | The model returned malformed JSON — try a different `OPENROUTER_MODEL` |
 | `Database errors` | Run `npx prisma migrate deploy` to ensure schema is up to date |
