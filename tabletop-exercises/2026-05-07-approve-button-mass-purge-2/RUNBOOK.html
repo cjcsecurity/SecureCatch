@@ -1,0 +1,1672 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-duration="3600" data-slug="approve-button-mass-purge-2">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tabletop Exercise Runbook</title>
+<style>
+:root {
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-2: #1c232c;
+  --border: #30363d;
+  --border-soft: #21262d;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --text-dim: #6e7681;
+  --accent: #58a6ff;
+  --read-aloud: #d4a72c;
+  --read-aloud-bg: rgba(212, 167, 44, 0.08);
+  --inject: #ff6b6b;
+  --inject-bg: rgba(255, 107, 107, 0.08);
+  --decision: #3fb950;
+  --decision-bg: rgba(63, 185, 80, 0.08);
+  --npc: #a371f7;
+  --npc-bg: rgba(163, 113, 247, 0.08);
+  --branch: #39d0d8;
+  --branch-bg: rgba(57, 208, 216, 0.08);
+  --capability: #58a6ff;
+  --capability-bg: rgba(88, 166, 255, 0.08);
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "SF Pro Display", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+[data-theme="light"] {
+  --bg: #ffffff;
+  --surface: #f6f8fa;
+  --surface-2: #eaeef2;
+  --border: #d0d7de;
+  --border-soft: #d8dee4;
+  --text: #1f2328;
+  --text-muted: #59636e;
+  --text-dim: #818b98;
+  --accent: #0969da;
+  --read-aloud: #9a6700;
+  --read-aloud-bg: rgba(212, 167, 44, 0.10);
+  --inject: #cf222e;
+  --inject-bg: rgba(207, 34, 46, 0.06);
+  --decision: #1a7f37;
+  --decision-bg: rgba(26, 127, 55, 0.07);
+  --npc: #8250df;
+  --npc-bg: rgba(130, 80, 223, 0.07);
+  --branch: #0a7c8a;
+  --branch-bg: rgba(10, 124, 138, 0.07);
+  --capability: #0969da;
+  --capability-bg: rgba(9, 105, 218, 0.07);
+  --shadow: 0 2px 8px rgba(31, 35, 40, 0.08);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Top bar ----------------------------------------------------------- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 24px;
+  align-items: center;
+  padding: 12px 24px;
+  backdrop-filter: blur(8px);
+}
+
+.topbar-meta { min-width: 0; }
+.topbar-meta h1 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+.topbar-meta .meta-line {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-family: var(--font-mono);
+}
+.topbar-meta .meta-line span + span::before {
+  content: " · ";
+  color: var(--text-dim);
+}
+
+.timer-block {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.timer-display {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--decision);
+  min-width: 142px;
+  text-align: center;
+  transition: color 0.3s;
+}
+.timer-display[data-zone="amber"] { color: var(--read-aloud); }
+.timer-display[data-zone="red"] { color: var(--inject); }
+
+.timer-controls { display: flex; gap: 4px; }
+
+.btn {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--surface); border-color: var(--text-muted); }
+.btn:active { transform: translateY(1px); }
+.btn-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+[data-theme="light"] .btn-primary { color: #fff; }
+.btn-danger { color: var(--inject); border-color: var(--inject); }
+.btn-success { color: var(--decision); border-color: var(--decision); }
+
+.topbar-actions { display: flex; gap: 6px; align-items: center; }
+
+/* Layout ----------------------------------------------------------- */
+.layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  max-width: 1400px;
+  margin: 0 auto;
+  gap: 32px;
+  padding: 24px;
+}
+
+aside.toc {
+  position: sticky;
+  top: 70px;
+  align-self: start;
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
+  font-size: 13px;
+  padding-right: 8px;
+}
+.toc h2 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 10px 0;
+}
+.toc ol {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 18px 0;
+}
+.toc ol li {
+  margin: 2px 0;
+}
+.toc a {
+  display: block;
+  padding: 6px 10px;
+  color: var(--text-muted);
+  border-left: 2px solid transparent;
+  border-radius: 0 4px 4px 0;
+  transition: all 0.15s;
+  text-decoration: none;
+}
+.toc a:hover { color: var(--text); background: var(--surface); }
+.toc a.active {
+  color: var(--text);
+  border-left-color: var(--accent);
+  background: var(--surface);
+  font-weight: 500;
+}
+.toc-counter {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-right: 6px;
+}
+
+main { min-width: 0; }
+
+/* Sections --------------------------------------------------------- */
+section.section {
+  margin-bottom: 56px;
+  scroll-margin-top: 80px;
+}
+section.phase { padding-top: 8px; }
+
+h2.section-title {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 6px 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+h2.section-title .phase-time {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--text-muted);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.section-subtitle {
+  color: var(--text-muted);
+  margin: 0 0 20px 0;
+  font-size: 14px;
+}
+
+h3 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 28px 0 10px 0;
+  letter-spacing: -0.01em;
+}
+
+p { margin: 10px 0; }
+
+/* Hero summary ----------------------------------------------------- */
+.hero {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px 28px;
+  margin-bottom: 32px;
+}
+.hero h1 {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 6px 0;
+  letter-spacing: -0.025em;
+}
+.hero .badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 16px 0; }
+.badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-muted);
+}
+
+/* Callouts --------------------------------------------------------- */
+.callout {
+  border-left: 3px solid;
+  background: var(--surface);
+  padding: 14px 18px;
+  margin: 18px 0;
+  border-radius: 0 6px 6px 0;
+  position: relative;
+}
+.callout-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.callout-label .glyph {
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+.callout-body { margin: 0; }
+.callout-body p:first-child { margin-top: 0; }
+.callout-body p:last-child { margin-bottom: 0; }
+
+.callout-readaloud {
+  border-left-color: var(--read-aloud);
+  background: var(--read-aloud-bg);
+}
+.callout-readaloud .callout-label { color: var(--read-aloud); }
+.callout-readaloud .callout-body {
+  font-style: italic;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.callout-inject {
+  border-left-color: var(--inject);
+  background: var(--inject-bg);
+  position: relative;
+  overflow: hidden;
+}
+.callout-inject .callout-label { color: var(--inject); }
+
+.callout-decision {
+  border-left-color: var(--decision);
+  background: var(--decision-bg);
+}
+.callout-decision .callout-label { color: var(--decision); }
+
+.callout-npc {
+  border-left-color: var(--npc);
+  background: var(--npc-bg);
+}
+.callout-npc .callout-label { color: var(--npc); }
+.callout-npc .npc-name {
+  font-weight: 600;
+  color: var(--text);
+}
+.callout-npc .npc-quote {
+  font-style: italic;
+  margin-top: 6px;
+}
+
+.callout-branch {
+  border-left-color: var(--branch);
+  background: var(--branch-bg);
+}
+.callout-branch .callout-label { color: var(--branch); }
+.callout-branch ul { padding-left: 20px; margin: 8px 0 0 0; }
+.callout-branch li { margin: 4px 0; }
+.callout-branch li strong { color: var(--branch); font-weight: 600; }
+
+.callout-capability {
+  border-left-color: var(--capability);
+  background: var(--capability-bg);
+}
+.callout-capability .callout-label { color: var(--capability); }
+
+/* Inject reveal overlay ------------------------------------------- */
+.inject-wrap { position: relative; margin: 18px 0; }
+.inject-wrap .reveal-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-2);
+  border: 1px dashed var(--border);
+  border-radius: 0 6px 6px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  z-index: 5;
+  padding: 18px;
+  text-align: center;
+}
+.inject-wrap[data-revealed="true"] .reveal-overlay { display: none; }
+.reveal-overlay .lock-icon { font-size: 22px; }
+.reveal-overlay .reveal-time {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* Tables ----------------------------------------------------------- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: 14px;
+}
+th, td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: top;
+}
+th {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+table.bordered { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+
+.decision-log td input,
+.decision-log td textarea {
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  resize: vertical;
+}
+.decision-log td input:focus,
+.decision-log td textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+.decision-log td:first-child input {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  width: 92px;
+}
+.decision-log td.actions { width: 60px; text-align: center; }
+.row-delete {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px 8px;
+  border-radius: 3px;
+}
+.row-delete:hover { color: var(--inject); background: var(--inject-bg); }
+
+/* Form fields ------------------------------------------------------ */
+label.field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin: 14px 0 4px 0;
+}
+textarea, input[type="text"], select {
+  width: 100%;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+textarea { min-height: 70px; }
+textarea:focus, input[type="text"]:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+}
+input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+.checklist label {
+  display: flex;
+  gap: 4px;
+  align-items: flex-start;
+  margin: 6px 0;
+  cursor: pointer;
+  font-size: 14px;
+}
+.checklist label:hover { color: var(--accent); }
+
+/* Mobile menu ------------------------------------------------------ */
+.toc-toggle {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; padding: 16px; gap: 0; }
+  aside.toc {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 280px;
+    max-height: 100vh;
+    background: var(--surface);
+    z-index: 200;
+    padding: 70px 16px 16px 16px;
+    border-right: 1px solid var(--border);
+    transform: translateX(-100%);
+    transition: transform 0.2s;
+  }
+  aside.toc[data-open="true"] { transform: translateX(0); }
+  .toc-toggle { display: inline-flex; }
+  .topbar {
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 8px;
+    padding: 10px 14px;
+  }
+  .topbar-meta { grid-column: 1 / -1; order: 1; }
+  .timer-block { order: 2; padding: 4px 8px; }
+  .timer-display { font-size: 18px; min-width: 116px; }
+  .topbar-actions { order: 3; }
+  .hero { padding: 18px; }
+  .hero h1 { font-size: 22px; }
+}
+
+/* Print ------------------------------------------------------------ */
+@media print {
+  :root {
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #f5f5f5;
+    --border: #cccccc;
+    --text: #000000;
+    --text-muted: #444444;
+  }
+  body { font-size: 11pt; color: #000; background: #fff; }
+  .topbar, aside.toc, .timer-controls, .topbar-actions,
+  .add-row-btn, .row-delete, .clear-state-btn, .toc-toggle,
+  .reveal-overlay { display: none !important; }
+  .layout { display: block; padding: 0; max-width: none; }
+  .inject-wrap[data-revealed="false"] .reveal-overlay,
+  .inject-wrap .reveal-overlay { display: none !important; }
+  section.section { page-break-after: always; margin-bottom: 24px; }
+  section.section:last-child { page-break-after: auto; }
+  .callout { break-inside: avoid; box-shadow: none; }
+  .hero { border: 2px solid #000; padding: 16px; }
+  textarea, input[type="text"] {
+    border: 1px solid #999;
+    background: #fff;
+    color: #000;
+    min-height: 40px;
+  }
+  a { color: #000; text-decoration: underline; }
+  h1, h2, h3 { color: #000; }
+}
+
+/* Misc ------------------------------------------------------------- */
+.divider {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 32px 0;
+}
+hr { border: 0; border-top: 1px solid var(--border-soft); margin: 24px 0; }
+code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--surface-2);
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border-soft);
+}
+.tag-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  padding: 1px 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+.add-row-btn { margin-top: 10px; }
+.clear-state-btn { margin-left: 8px; }
+
+.toc-mobile-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: none;
+}
+@media (max-width: 900px) {
+  .toc-mobile-close { display: inline-flex; }
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--decision);
+  padding: 10px 16px;
+  border-radius: 4px;
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  z-index: 300;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <button class="btn btn-icon toc-toggle" id="tocToggle" aria-label="Toggle navigation" title="Navigation">&#9776;</button>
+  <div class="topbar-meta">
+    <!-- TTX:META_START -->
+    <h1>Burning the Inbox — Approve &amp; Remediate Goes Wide</h1>
+    <div class="meta-line">
+      <span>prodsec / IR</span>
+      <span>60 min</span>
+      <span>intermediate</span>
+      <span>eng + leadership</span>
+    </div>
+    <!-- TTX:META_END -->
+  </div>
+  <div class="timer-block">
+    <div class="timer-display" id="timerDisplay" data-zone="green">T+00:00:00</div>
+    <div class="timer-controls">
+      <button class="btn btn-success" id="timerStart" title="Start timer">Start</button>
+      <button class="btn" id="timerPause" title="Pause timer">Pause</button>
+      <button class="btn" id="timerReset" title="Reset timer">Reset</button>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn btn-icon" id="revealAllBtn" title="Reveal all injects">&#128275;</button>
+    <button class="btn btn-icon" id="hideAllBtn" title="Hide all injects">&#128274;</button>
+    <button class="btn btn-icon" id="themeToggle" title="Toggle theme">&#9728;</button>
+    <button class="btn btn-icon" id="printBtn" title="Print" onclick="window.print()">&#128424;</button>
+    <button class="btn btn-primary" id="exportBtn" title="Export state as JSON">Export</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="toc" id="toc">
+    <button class="btn btn-icon toc-mobile-close" id="tocClose" aria-label="Close navigation">&times;</button>
+    <h2>Contents</h2>
+    <ol id="tocList"></ol>
+  </aside>
+
+  <main>
+
+    <!-- Scenario summary ---------------------------------------- -->
+    <section class="section" id="overview" data-toc="Overview">
+      <h2 class="section-title">Overview</h2>
+      <div class="hero">
+        <!-- TTX:SCENARIO_SUMMARY_START -->
+        <h1>Burning the Inbox — Approve &amp; Remediate Goes Wide</h1>
+        <div class="badges">
+          <span class="badge">prodsec / IR</span>
+          <span class="badge">60 min</span>
+          <span class="badge">intermediate</span>
+          <span class="badge">eng + leadership</span>
+          <span class="badge">SecureCatch · Next.js 16 · Workspace DWD</span>
+        </div>
+        <p>It is 09:14 on a Tuesday. <strong>SecureCatch</strong> — your phishing-triage SOAR — has been live for six weeks. SOC analysts triage Jira SECOPS tickets, the AI step labels confidence, and a single button labelled <strong>"Approve &amp; Remediate"</strong> runs a domain-wide Gmail purge across 1,200 user mailboxes via Google Workspace Domain-Wide Delegation. It has, until today, worked.</p>
+        <p>At 09:14:02 a Tier-2 analyst clicks the button on alert <code>phl_4f2c…b8</code>, an apparent CEO-impersonation phish flagged 92% by the AI model. Within sixty seconds the helpdesk Slack lights up: people across Engineering, Sales, and HR are reporting that <em>legitimate</em> emails have vanished. By T+0 of this exercise, the purge loop in <code>app/api/remediate/[id]/route.ts</code> is roughly one-third of the way through the user list — sequential, no abort signal, and the database row for <code>purgeResults</code> has not yet been written.</p>
+        <p>Outside the building, the day is also unusual. Outside counsel for an active arbitration is due to file a discovery response by 17:00 today. The CEO is rehearsing remarks for a 16:00 board update. A reporter at TechCrunch has a Google Alert configured for your company name. None of those people know about SecureCatch yet. Some of them are about to.</p>
+        <p><strong>Objectives:</strong> Test the team's ability to (1) trade off containment vs. forensic evidence under real time pressure; (2) coordinate cross-functional comms (eng, exec, customer, press, legal) with imperfect facts; (3) interface engineering with a litigation-hold deliverable; (4) make a kill-switch / revert / takedown call with non-trivial side effects in each direction.</p>
+        <!-- TTX:SCENARIO_SUMMARY_END -->
+      </div>
+    </section>
+
+    <!-- Roles --------------------------------------------------- -->
+    <section class="section" id="roles" data-toc="Roles">
+      <h2 class="section-title">Roles &amp; Assignments</h2>
+      <p class="section-subtitle">Each named role owns at least one decision moment. Fill in the player column before kickoff.</p>
+      <!-- TTX:ROLES_START -->
+      <table class="bordered">
+        <thead>
+          <tr>
+            <th style="width: 24%">Role (in-character name)</th>
+            <th style="width: 20%">Player</th>
+            <th>Responsibilities</th>
+            <th style="width: 18%">Owns Decisions In</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Incident Commander</strong> — <em>Dr. Rae Chen, CISO</em></td>
+            <td><input type="text" id="role_ic" placeholder="Name"></td>
+            <td>Bridge, severity, escalation, all-clear. Pushes for decisions when the room stalls.</td>
+            <td>Phase 1, Phase 3</td>
+          </tr>
+          <tr>
+            <td><strong>SecureCatch Eng Lead</strong> — <em>Linnea Strand</em></td>
+            <td><input type="text" id="role_eng" placeholder="Name"></td>
+            <td>Code-level diagnosis, kill-switch / revert decisions, in-flight purge process.</td>
+            <td>Phase 1, Phase 3</td>
+          </tr>
+          <tr>
+            <td><strong>SOC Analyst on-call</strong> — <em>Theo Park</em></td>
+            <td><input type="text" id="role_soc" placeholder="Name"></td>
+            <td>The clicker. Analyst-side timeline of what they saw, what the UI showed, when. <strong>Not the villain.</strong></td>
+            <td>Phase 1 (timeline)</td>
+          </tr>
+          <tr>
+            <td><strong>Comms / PR Lead</strong> — <em>Marcus Vee</em></td>
+            <td><input type="text" id="role_comms" placeholder="Name"></td>
+            <td>Internal email, status page, press posture, reporter inbound.</td>
+            <td>Phase 2</td>
+          </tr>
+          <tr>
+            <td><strong>General Counsel</strong> — <em>Mira Okafor</em></td>
+            <td><input type="text" id="role_gc" placeholder="Name"></td>
+            <td>Litigation hold, spoliation risk, regulator clock, sworn-timeline deliverable.</td>
+            <td>Phase 3</td>
+          </tr>
+          <tr>
+            <td><strong>Helpdesk / CS Lead</strong> — <em>Holly Tran</em></td>
+            <td><input type="text" id="role_helpdesk" placeholder="Name"></td>
+            <td>User-facing triage, recovery comms, ticket triage, customer escalations.</td>
+            <td>Phase 2</td>
+          </tr>
+          <tr>
+            <td><strong>Executive Sponsor</strong> — <em>Bo Reyes, COO</em></td>
+            <td><input type="text" id="role_exec" placeholder="Name"></td>
+            <td>Business posture, customer-trust call, kill-the-product call.</td>
+            <td>Phase 3</td>
+          </tr>
+          <tr>
+            <td><strong>Facilitator</strong></td>
+            <td><input type="text" id="role_facilitator" placeholder="Name"></td>
+            <td>Runs the exercise, drops injects, manages the timer, enforces tempo, plays NPCs.</td>
+            <td>(Out of play)</td>
+          </tr>
+          <tr>
+            <td><strong>Evaluator</strong> (optional)</td>
+            <td><input type="text" id="role_evaluator" placeholder="Name"></td>
+            <td>Notes, scoring against the rubric, hotwash prompts.</td>
+            <td>(Out of play)</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="font-size: 13px; color: var(--text-muted); margin-top: 8px;"><strong>Small-team variant:</strong> collapse to 5 by combining IC + Exec Sponsor (one person), and Comms + Helpdesk (one person). Keep Eng Lead, SOC Analyst, and General Counsel as their own roles — the exercise leans hard on each of them.</p>
+      <!-- TTX:ROLES_END -->
+    </section>
+
+    <!-- Phases -------------------------------------------------- -->
+    <!-- TTX:PHASES_START -->
+    <!-- =========================================================== -->
+    <!-- PHASE 1 -->
+    <!-- =========================================================== -->
+    <section class="section phase" id="phase-1" data-toc="Phase 1 — What did I just do?" data-phase-start="0">
+      <h2 class="section-title">Phase 1 — What did I just do? <span class="phase-time">T+0:00 → T+0:18</span></h2>
+      <p class="section-subtitle">The button is clicked. The purge is running. Helpdesk is filling up with confused users. The team has minutes to decide whether to stop the process — and what they'll lose by stopping it.</p>
+
+      <div class="callout callout-readaloud">
+        <div class="callout-label"><span class="glyph">&#9834;</span> READ ALOUD</div>
+        <div class="callout-body">
+          <p>It is Tuesday, May 7th, 9:14 AM. The third coffee of the morning is half-drunk on Theo's desk. The Jira SECOPS board has eight new alerts overnight; six are obvious spam and the AI model has already auto-classified them. The seventh — <code>phl_4f2c…b8</code> — is flagged 92% phishing: a CEO impersonation, subject line <em>"Quick favor — board prep"</em>, body asking three people to wire a deposit to a vendor before lunch. Theo opens the alert, scans the headers, glances at the VirusTotal panel — sender domain blacklisted across 14 engines — and clicks <strong>Approve &amp; Remediate</strong>.</p>
+          <p>A toast in the corner says <em>"Domain-wide purge initiated."</em> Theo takes a sip. At 9:14:43 — forty-one seconds later — the Helpdesk Slack channel <code>#help-desk</code> lights up with the first message: <em>"hey is anyone else's inbox suddenly missing the Q2 OKR thread?"</em> Two more arrive in the next twenty seconds. Theo's stomach drops. They open a second tab and type into the engineering channel: <em>"Uh… I think SecureCatch did something weird."</em></p>
+        </div>
+      </div>
+
+      <div class="callout callout-capability">
+        <div class="callout-label"><span class="glyph">&#9881;</span> CAPABILITIES TESTED</div>
+        <div class="callout-body">
+          <ul>
+            <li>Detection: how fast does the team move from a vague helpdesk ping to a declared incident?</li>
+            <li>Containment instinct: do they reach for the in-flight purge first, or investigate first?</li>
+            <li>Forensic discipline: do they preserve the analyst's session state and Slack history before anyone closes a tab?</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="inject-wrap" data-inject-id="p1-i1" data-reveal-time="T+0:03">
+        <div class="reveal-overlay">
+          <div class="lock-icon">&#128274;</div>
+          <div>Inject locked</div>
+          <div class="reveal-time">Reveal at T+0:03</div>
+          <button class="btn btn-primary reveal-btn">Reveal</button>
+        </div>
+        <div class="callout callout-inject">
+          <div class="callout-label"><span class="glyph">&#9888;</span> INJECT 1.1 &middot; T+0:03 <span class="tag-pill">Helpdesk Slack flood</span></div>
+          <div class="callout-body">
+            <p><strong>Posted by Holly (Helpdesk Lead) into <code>#incident-bridge</code> at 9:17:</strong></p>
+            <blockquote>
+              @here — getting a flood. Last 4 minutes:<br>
+              · 11 tickets, "missing emails", various depts<br>
+              · 3 are HR thread<br>
+              · 1 is from Bo (COO!): "where did the 7am board prep email go"<br>
+              · 1 is from outside counsel's office: "did you delete a thread we sent yesterday"<br>
+              Something is eating mail across the org.
+            </blockquote>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-branch">
+        <div class="callout-label"><span class="glyph">&#9656;</span> BRANCH on team's response within 4 minutes</div>
+        <div class="callout-body">
+          <ul>
+            <li>If team <strong>declares an incident, pages the IC, and asks Engineering to confirm whether the SecureCatch purge is still running</strong> → drop <strong>Inject 1.2A</strong></li>
+            <li>If team <strong>investigates from the helpdesk side first</strong> (pulling tickets, asking users for screenshots) without touching the SecureCatch process → drop <strong>Inject 1.2B</strong></li>
+            <li>If team <strong>takes no concrete action in 4 minutes</strong> → drop <strong>Inject 1.2C</strong> (wild-card escalator)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="inject-wrap" data-inject-id="p1-i2A" data-reveal-time="T+0:08">
+        <div class="reveal-overlay">
+          <div class="lock-icon">&#128274;</div>
+          <div>Inject locked (branch A)</div>
+          <div class="reveal-time">Reveal at T+0:08 if team went straight to engineering</div>
+          <button class="btn btn-primary reveal-btn">Reveal</button>
+        </div>
+        <div class="callout callout-inject">
+          <div class="callout-label"><span class="glyph">&#9888;</span> INJECT 1.2A &middot; T+0:08 <span class="tag-pill">Eng-first branch</span></div>
+          <div class="callout-body">
+            <p><strong>From Linnea, Engineering Lead, in <code>#incident-bridge</code>:</strong></p>
+            <blockquote>
+              Looked at the server. The remediate route is mid-loop. Logs are still emitting <code>Trashed message for user@…</code> once every 1–2 sec. We're at user 487 of 1,194. ETA to finish: ~9 more minutes if I let it run.<br><br>
+              No graceful abort. No feature flag wired. To stop it I have to either <code>kill -9</code> the Node process or restart the host. If I kill it mid-run, <strong><code>purgeResults</code> never gets written to the DB</strong> — meaning we lose the audit trail of which users were affected. If I let it finish, ~700 more mailboxes get hit. Need a call. Now.
+            </blockquote>
+          </div>
+        </div>
+      </div>
+
+      <div class="inject-wrap" data-inject-id="p1-i2B" data-reveal-time="T+0:08">
+        <div class="reveal-overlay">
+          <div class="lock-icon">&#128274;</div>
+          <div>Inject locked (branch B)</div>
+          <div class="reveal-time">Reveal at T+0:08 if team triaged at helpdesk first</div>
+          <button class="btn btn-primary reveal-btn">Reveal</button>
+        </div>
+        <div class="callout callout-inject">
+          <div class="callout-label"><span class="glyph">&#9888;</span> INJECT 1.2B &middot; T+0:08 <span class="tag-pill">Helpdesk-first branch</span></div>
+          <div class="callout-body">
+            <p><strong>From Holly:</strong></p>
+            <blockquote>Up to 34 tickets. Two C-suite EAs are on the phone with me. People are forwarding screenshots of "email gone" — some of them are obviously legit corporate mail. I can't keep up at this rate.</blockquote>
+            <p>Then 90 seconds later, <strong>unprompted from Linnea:</strong></p>
+            <blockquote>FYI — SecureCatch is <em>still running the purge</em>. I just realized when I tailed the logs. We're at user 580-ish of 1,194. Do we kill it or what.</blockquote>
+          </div>
+        </div>
+      </div>
+
+      <div class="inject-wrap" data-inject-id="p1-i2C" data-reveal-time="T+0:10">
+        <div class="reveal-overlay">
+          <div class="lock-icon">&#128274;</div>
+          <div>Inject locked (wild card)</div>
+          <div class="reveal-time">Reveal at T+0:10 only if team froze</div>
+          <button class="btn btn-primary reveal-btn">Reveal</button>
+        </div>
+        <div class="callout callout-npc">
+          <div class="callout-label"><span class="glyph">&#9836;</span> INJECT 1.2C &middot; NPC voice (wild card)</div>
+          <div class="callout-body">
+            <p><span class="npc-name">Bo Reyes — COO</span> <span class="tag-pill">Joins the bridge unannounced</span></p>
+            <p class="npc-quote">"I've got two board members on email asking why their advisors said our company-wide deletion is on Twitter. Someone tell me what is happening, in one sentence, right now."</p>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 8px;"><strong>Voice cue:</strong> calm but tight, no preamble. Not panicked; the energy is <em>focused exec</em> not <em>raging boss</em>. Pushes the team out of analysis paralysis.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-decision">
+        <div class="callout-label"><span class="glyph">&#10003;</span> DECISION POINT 1</div>
+        <div class="callout-body">
+          <p><strong>Stop or let it ride.</strong> Engineering can either (a) kill the Node process now — stops further damage, but loses the audit trail of which users were already purged because <code>purgeResults</code> only writes after the loop completes; or (b) let the loop finish — full audit trail, but ~700 more mailboxes get hit while the team watches. Some teams find a third path: snapshot the in-progress logs / DB state before killing — preserves evidence at the cost of 2–3 minutes of additional damage.</p>
+          <p><strong>Owns this call:</strong> Incident Commander, advised by Engineering Lead.</p>
+          <textarea id="decision_p1_q1" placeholder="Decision (kill / let finish / snapshot-then-kill):&#10;&#10;Rationale:&#10;&#10;Evidence preservation steps committed:&#10;&#10;Time taken to decide (T+ time):" rows="5"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================== -->
+    <!-- PHASE 2 -->
+    <!-- =========================================================== -->
+    <section class="section phase" id="phase-2" data-toc="Phase 2 — How wide?" data-phase-start="1080">
+      <h2 class="section-title">Phase 2 — How wide? <span class="phase-time">T+0:18 → T+0:36</span></h2>
+      <p class="section-subtitle">The shape of the damage emerges. The team is pulled in three directions: engineering wants RCA, customers want answers, and a reporter has just shown up.</p>
+
+      <div class="callout callout-readaloud">
+        <div class="callout-label"><span class="glyph">&#9834;</span> READ ALOUD (bridge)</div>
+        <div class="callout-body">
+          <p>The purge has either stopped or it hasn't, but either way the room can now feel its shape. The DB shows <code>purgeResults</code> populated for the affected alert: <code>usersSearched: 1194, usersAffected: 487</code> — or <code>null</code>, if you killed it mid-run, in which case Linnea is grepping logs to reconstruct the count by hand. Helpdesk has crossed 80 tickets. Customer Success has the first inbound ticket from a <em>paying customer</em> who notices their account-management thread has gone dark. And on Twitter, the first mention of the company name in a context that is not your marketing team has just appeared.</p>
+        </div>
+      </div>
+
+      <div class="callout callout-capability">
+        <div class="callout-label"><span class="glyph">&#9881;</span> CAPABILITIES TESTED</div>
+        <div class="callout-body">
+          <ul>
+            <li>Scope expansion handling — separating "internal pain" from "external/customer-impacting" and "press"</li>
+            <li>Comms cadence — clear sequence (internal → customers → press) or improvised?</li>
+            <li>Exec alignment — does the IC keep the COO informed without losing operational tempo?</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="inject-wrap" data-inject-id="p2-i1" data-reveal-time="T+0:19">
+        <div class="reveal-overlay">
+          <div class="lock-icon">&#128274;</div>
+          <div>Inject locked</div>
+          <div class="reveal-time">Reveal at T+0:19</div>
+          <button class="btn btn-primary reveal-btn">Reveal</button>
+        </div>
+        <div class="callout callout-inject">
+          <div class="callout-label"><span class="glyph">&#9888;</span> INJECT 2.1 &middot; T+0:19 <span class="tag-pill">Scope dump</span></div>
+          <div class="callout-body">
+            <p><strong>From Linnea, posted to the bridge:</strong></p>
+            <blockquote>
+              Numbers as of right now (lossy if we killed it mid-run):<br>
+              · 487 users had emails moved to Trash<br>
+              · Trashed messages count: best estimate <strong>3,847</strong> across all users<br>
+              · <strong>Important:</strong> trash is per-user Gmail Trash, recoverable for 30 days via <code>gmail.users.messages.untrash</code>. Not permadeleted. (Yet.)<br><br>
+              But — the search query was <code>rfc822msgid:&lt;one specific Message-ID&gt;</code>. We expected that to be unique. It wasn't. It collided with a regular automated email that uses the same Message-ID format. Investigating now.
+            </blockquote>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-branch">
+        <div class="callout-label"><span class="glyph">&#9656;</span> BRANCH on team's posture</div>
+        <div class="callout-body">
+          <ul>
+            <li>If team <strong>moves to recovery in parallel with diagnosis</strong> → drop <strong>Inject 2.2A</strong> (TechCrunch DM forces a press call before scope is confirmed)</li>
+            <li>If team <strong>stays in diagnosis-first mode</strong> → drop <strong>Inject 2.2B</strong> (Acme Robotics customer escalation forces a customer-facing answer with incomplete info)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="inject-wrap" data-inject-id="p2-i2A" data-reveal-time="T+0:25">
+        <div class="reveal-overlay">
+          <div class="lock-icon">&#128274;</div>
+          <div>Inject locked (branch A)</div>
+          <div class="reveal-time">Reveal at T+0:25 if team moved to recovery</div>
+          <button class="btn btn-primary reveal-btn">Reveal</button>
+        </div>
+        <div class="callout callout-npc">
+          <div class="callout-label"><span class="glyph">&#9836;</span> INJECT 2.2A &middot; T+0:25 NPC voice</div>
+          <div class="callout-body">
+            <p><span class="npc-name">Marcus Vee — Comms Lead</span> <span class="tag-pill">Holds his phone up, voice flat</span></p>
+            <p class="npc-quote">"Reporter from TechCrunch just DM'd Rae on Twitter. Quote: 'Hearing your company is in the middle of a massive accidental email deletion. Got 30 seconds for comment before I publish?' He's got a deadline of 10:30 — 25 minutes from now. He used the word <em>accidental</em>, which means he has a source inside."</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="inject-wrap" data-inject-id="p2-i2B" data-reveal-time="T+0:25">
+        <div class="reveal-overlay">
+          <div class="lock-icon">&#128274;</div>
+          <div>Inject locked (branch B)</div>
+          <div class="reveal-time">Reveal at T+0:25 if team stayed in diagnosis</div>
+          <button class="btn btn-primary reveal-btn">Reveal</button>
+        </div>
+        <div class="callout callout-inject">
+          <div class="callout-label"><span class="glyph">&#9888;</span> INJECT 2.2B &middot; T+0:25 <span class="tag-pill">Customer escalation</span></div>
+          <div class="callout-body">
+            <p><strong>From Holly:</strong></p>
+            <blockquote>CS just escalated me. <strong>Acme Robotics</strong> — top-10 customer, $4.2M ARR — opened a P1: <em>"Several of our team members are reporting missing emails from our shared SecureCatch alert workflow. Has our data been compromised?"</em> They're on a call with their security team in 35 minutes. They want a written confirmation of impact before that call.</blockquote>
+          </div>
+        </div>
+      </div>
+
+      <div class="inject-wrap" data-inject-id="p2-i3" data-reveal-time="T+0:31">
+        <div class="reveal-overlay">
+          <div class="lock-icon">&#128274;</div>
+          <div>Inject locked</div>
+          <div class="reveal-time">Reveal at T+0:31</div>
+          <button class="btn btn-primary reveal-btn">Reveal</button>
+        </div>
+        <div class="callout callout-npc">
+          <div class="callout-label"><span class="glyph">&#9836;</span> INJECT 2.3 &middot; T+0:31 NPC voice</div>
+          <div class="callout-body">
+            <p><span class="npc-name">Bo Reyes — COO</span> <span class="tag-pill">Slightly winded, just off a call</span></p>
+            <p class="npc-quote">"Rae — I just got off with Pat in HR. They told me the email Theo purged this morning was a phishing impersonation of <em>me</em>, telling people to wire money. So the purge was <em>correct in principle</em>, just wildly overscoped. I want to be clear: I am not blaming Theo. I am asking what we tell the company in the next thirty minutes, before someone forwards this to TechCrunch with their own framing."</p>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 8px;"><strong>Facilitator note:</strong> reframes the situation — this wasn't a malicious or even purely-buggy decision; the alert was real. Some participants will get protective of Theo here. Let it surface; that's a finding.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-decision">
+        <div class="callout-label"><span class="glyph">&#10003;</span> DECISION POINT 2</div>
+        <div class="callout-body">
+          <p><strong>Comms posture.</strong> Pick one of (a) silent until RCA is done, (b) terse internal-only ack now ("we are aware of an email-system issue, more soon"), (c) all-hands internal email plus a holding statement to press, (d) full transparency including RCA-in-progress published to status page. Each option has a real cost; the right answer is <em>probably</em> (b) or (c) — but the team has to <em>justify</em> their pick.</p>
+          <p><strong>Owns this call:</strong> Comms Lead, with concurrence from IC and Exec Sponsor.</p>
+          <textarea id="decision_p2_q1" placeholder="Posture chosen (a/b/c/d/other):&#10;&#10;What was published, in what channel, when:&#10;&#10;Who approved the wording:&#10;&#10;Cadence for next update:" rows="5"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <!-- =========================================================== -->
+    <!-- PHASE 3 -->
+    <!-- =========================================================== -->
+    <section class="section phase" id="phase-3" data-toc="Phase 3 — The litigation hold" data-phase-start="2160">
+      <h2 class="section-title">Phase 3 — The litigation hold <span class="phase-time">T+0:36 → T+0:52</span></h2>
+      <p class="section-subtitle">General Counsel arrives. The discovery clock is ticking. Engineering finds the root cause and an untested kill switch. The team has to decide what kind of product SecureCatch is going to be by lunchtime.</p>
+
+      <div class="callout callout-readaloud">
+        <div class="callout-label"><span class="glyph">&#9834;</span> READ ALOUD (bridge)</div>
+        <div class="callout-body">
+          <p>Whatever you decided about comms, the next person walking into the room does not care. Mira Okafor — General Counsel — has been on a call with outside counsel for the last twenty minutes. She closes her laptop, looks up, and walks over to the bridge.</p>
+        </div>
+      </div>
+
+      <div class="callout callout-capability">
+        <div class="callout-label"><span class="glyph">&#9881;</span> CAPABILITIES TESTED</div>
+        <div class="callout-body">
+          <ul>
+            <li>Legal-engineering interface — does the team understand spoliation and chain-of-custody?</li>
+            <li>Trade-off discipline — keeping a degraded product live vs. taking it offline entirely</li>
+            <li>Recovery sequencing — who gets their email back first, on what authority</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="inject-wrap" data-inject-id="p3-i1" data-reveal-time="T+0:37">
+        <div class="reveal-overlay">
+          <div class="lock-icon">&#128274;</div>
+          <div>Inject locked</div>
+          <div class="reveal-time">Reveal at T+0:37</div>
+          <button class="btn btn-primary reveal-btn">Reveal</button>
+        </div>
+        <div class="callout callout-npc">
+          <div class="callout-label"><span class="glyph">&#9836;</span> INJECT 3.1 &middot; T+0:37 NPC voice</div>
+          <div class="callout-body">
+            <p><span class="npc-name">Mira Okafor — General Counsel</span> <span class="tag-pill">Calm, exact, no rush</span></p>
+            <p class="npc-quote">"Walk me through this. — Right. I need to know, with confidence, whether any email between <strong>Patricia Singh</strong>, <strong>HR</strong>, and <strong>Greco &amp; Lin</strong> outside counsel — dating back to January 14, 2026 — was touched. Those emails are under a written litigation hold for an active arbitration. Outside counsel for the other side files their discovery response by 17:00 today. If those emails are gone — even if we recover them tonight — we have to disclose. Spoliation. So I need a sworn list of affected message IDs and a sworn timeline, in writing, by 14:00. Not a verbal."</p>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 8px;"><strong>Voice cue:</strong> lawyer-precise. Pauses before speaking. Uses words like <em>spoliation</em> without explaining them. Will repeat herself to confirm she's been heard.</p>
+            <p style="font-size: 13px; color: var(--text-muted); margin-top: 8px;"><strong>What's tested:</strong> the team must convert engineering's audit trail (which may be partial if Phase 1 chose to kill the process) into a defensible written timeline. Watch the gap between "we mostly know" and "we can swear under penalty of perjury."</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="inject-wrap" data-inject-id="p3-i2" data-reveal-time="T+0:44">
+        <div class="reveal-overlay">
+          <div class="lock-icon">&#128274;</div>
+          <div>Inject locked</div>
+          <div class="reveal-time">Reveal at T+0:44</div>
+          <button class="btn btn-primary reveal-btn">Reveal</button>
+        </div>
+        <div class="callout callout-inject">
+          <div class="callout-label"><span class="glyph">&#9888;</span> INJECT 3.2 &middot; T+0:44 <span class="tag-pill">Root cause + Chekhov's kill switch</span></div>
+          <div class="callout-body">
+            <p><strong>From Linnea, in the bridge:</strong></p>
+            <blockquote>
+              Got it. The purge query is <code>rfc822msgid:&lt;id&gt;</code> — which Gmail honors as exact match. The Message-ID we used came from the AI enrichment step in <code>lib/ai.ts</code>, which <strong>normalizes</strong> Message-IDs by stripping a date suffix. So <code>phish-2026-05-07-a8b9c@evil.com</code> got normalized to <code>phish@evil.com</code> — and that <strong>collided</strong> with a no-reply notification system that uses short-form Message-IDs like <code>notify@evil.com</code>. The phisher chose their domain on purpose; the AI helped them blast wider. Effectively: a model regression weaponized the SOAR.<br><br>
+              <strong>Also:</strong> I just found a feature flag <code>FEATURE_FLAGS.disable_approve_remediate</code> added two weeks ago in commit <code>7d3f1ac</code> by someone on my team. There's no test for it. There's no docs for it. I have <em>no idea</em> if it actually short-circuits the route or if the commit was wishful thinking. We can flip it now — production traffic — and find out. Or we can <code>git revert</code> the entire enrichment commit and redeploy, which takes ~12 minutes. Or we put SecureCatch behind an HTTP 503 banner page until tomorrow.
+            </blockquote>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-branch">
+        <div class="callout-label"><span class="glyph">&#9656;</span> BRANCH on team's choice</div>
+        <div class="callout-body">
+          <ul>
+            <li>If team <strong>flips the kill switch</strong> → drop <strong>Inject 3.3A</strong> (it didn't work)</li>
+            <li>If team <strong>reverts and redeploys</strong> → drop <strong>Inject 3.3B</strong> (AI enrichment also gone)</li>
+            <li>If team <strong>takes the product offline (503)</strong> → drop <strong>Inject 3.3C</strong> (real phish lands during downtime)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="inject-wrap" data-inject-id="p3-i3A" data-reveal-time="T+0:48">
+        <div class="reveal-overlay">
+          <div class="lock-icon">&#128274;</div>
+          <div>Inject locked (branch A)</div>
+          <div class="reveal-time">Reveal at T+0:48 if team flipped the kill switch</div>
+          <button class="btn btn-primary reveal-btn">Reveal</button>
+        </div>
+        <div class="callout callout-inject">
+          <div class="callout-label"><span class="glyph">&#9888;</span> INJECT 3.3A &middot; T+0:48 <span class="tag-pill">Kill switch did not work</span></div>
+          <div class="callout-body">
+            <p><strong>From Linnea:</strong></p>
+            <blockquote>Flag flipped. Just tested it on a dummy alert. Route still ran. The flag was wishful thinking. The commit added the constant but never plumbed it into the route handler. We are now back to "revert or 503" with five fewer minutes of runway.</blockquote>
+          </div>
+        </div>
+      </div>
+
+      <div class="inject-wrap" data-inject-id="p3-i3B" data-reveal-time="T+0:48">
+        <div class="reveal-overlay">
+          <div class="lock-icon">&#128274;</div>
+          <div>Inject locked (branch B)</div>
+          <div class="reveal-time">Reveal at T+0:48 if team reverted</div>
+          <button class="btn btn-primary reveal-btn">Reveal</button>
+        </div>
+        <div class="callout callout-inject">
+          <div class="callout-label"><span class="glyph">&#9888;</span> INJECT 3.3B &middot; T+0:48 <span class="tag-pill">Revert lost AI enrichment too</span></div>
+          <div class="callout-body">
+            <p><strong>From Linnea:</strong></p>
+            <blockquote>Reverted, redeployed in 11 minutes. Side effect: AI enrichment is <em>also</em> off — that was in the same module. Analysts can still triage but they're working without classification. SOC throughput will be roughly 3x slower. Acceptable for a day. Costly for a week.</blockquote>
+          </div>
+        </div>
+      </div>
+
+      <div class="inject-wrap" data-inject-id="p3-i3C" data-reveal-time="T+0:48">
+        <div class="reveal-overlay">
+          <div class="lock-icon">&#128274;</div>
+          <div>Inject locked (branch C)</div>
+          <div class="reveal-time">Reveal at T+0:48 if team took product offline</div>
+          <button class="btn btn-primary reveal-btn">Reveal</button>
+        </div>
+        <div class="callout callout-inject">
+          <div class="callout-label"><span class="glyph">&#9888;</span> INJECT 3.3C &middot; T+0:48 <span class="tag-pill">Real phish during downtime</span></div>
+          <div class="callout-body">
+            <p><strong>From Holly:</strong></p>
+            <blockquote>While we were 503'd, a real phishing wave hit the org. Helpdesk caught 6 user reports in the last 8 minutes, all the same payload, all asking for OAuth grants. Without SecureCatch, the SOC is triaging by hand. Recommend we re-enable the <em>triage</em> parts of SecureCatch even if Approve &amp; Remediate stays off.</blockquote>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout callout-decision">
+        <div class="callout-label"><span class="glyph">&#10003;</span> DECISION POINT 3</div>
+        <div class="callout-body">
+          <p><strong>Stay live, degraded, or dark.</strong> Given (a) Mira's 14:00 deadline for the sworn list, (b) recovery work across 487 user mailboxes, (c) an active threat environment that the SOC depends on SecureCatch for, and (d) press and customer comms still in flight — does the company keep SecureCatch operational with the kill switch, run it degraded (read-only triage, no remediation), or take it offline until the AAR is signed?</p>
+          <p><strong>Owns this call:</strong> Executive Sponsor (Bo) with binding input from General Counsel and Engineering Lead.</p>
+          <textarea id="decision_p3_q1" placeholder="Posture chosen (live/degraded/dark/other):&#10;&#10;Conditions for re-enabling Approve & Remediate:&#10;&#10;Who has authority to flip it back on:&#10;&#10;Sworn-timeline owner and target:" rows="5"></textarea>
+        </div>
+      </div>
+
+      <div class="callout callout-readaloud">
+        <div class="callout-label"><span class="glyph">&#9834;</span> READ ALOUD (closing)</div>
+        <div class="callout-body">
+          <p>The clock on the wall says 10:06. SecureCatch is — in whatever posture you've chosen — running, half-running, or off. Linnea is writing the revert commit message. Mira is starting on the sworn timeline. Marcus is on the phone with the TechCrunch reporter. Holly is approving an unprecedented 487 individual untrash actions and trying to figure out who has the authority to do that. Bo is walking back to the board prep that they will not, in fact, have on time.</p>
+          <p>Theo is sitting at their desk. Their coffee is cold. They have not closed any of the eleven browser tabs that were open when they clicked the button. They are not sure if they should.</p>
+        </div>
+      </div>
+    </section>
+    <!-- TTX:PHASES_END -->
+
+    <!-- Decision log ------------------------------------------- -->
+    <section class="section" id="decision-log" data-toc="Decision Log">
+      <h2 class="section-title">Decision Log</h2>
+      <p class="section-subtitle">Capture every consequential decision in real time. The Time column auto-fills from the exercise timer when you add a row.</p>
+      <!-- TTX:DECISION_LOG_START -->
+      <table class="bordered decision-log">
+        <thead>
+          <tr>
+            <th style="width: 110px">Time</th>
+            <th style="width: 28%">Decision</th>
+            <th style="width: 18%">Owner</th>
+            <th>Rationale</th>
+            <th class="actions"></th>
+          </tr>
+        </thead>
+        <tbody id="decisionLogBody">
+        </tbody>
+      </table>
+      <button class="btn btn-success add-row-btn" id="addDecisionRow">+ Add row</button>
+      <button class="btn btn-danger clear-state-btn" id="clearStateBtn">Clear all scenario state</button>
+      <!-- TTX:DECISION_LOG_END -->
+    </section>
+
+    <!-- Hotwash ------------------------------------------------ -->
+    <section class="section" id="hotwash" data-toc="Hotwash">
+      <h2 class="section-title">Hotwash</h2>
+      <p class="section-subtitle">Run this in the room while everyone's still warm. 10 minutes max. Don't let it slide into the AAR.</p>
+      <!-- TTX:HOTWASH_START -->
+      <label class="field-label">1. At what T+ time did your team commit to the call between "kill the running process" and "let it finish"? What information did you wish you'd had three minutes earlier?</label>
+      <textarea id="hotwash_q1" rows="3"></textarea>
+
+      <label class="field-label">2. The audit trail (<code>purgeResults</code> JSON) only writes after the loop completes. Is that the right design for a destructive batch operation? What would you change before next Tuesday?</label>
+      <textarea id="hotwash_q2" rows="3"></textarea>
+
+      <label class="field-label">3. Who in your team had the authority to take SecureCatch offline? Was that authority clear <em>before</em> you needed it, or did you find out by trying?</label>
+      <textarea id="hotwash_q3" rows="3"></textarea>
+
+      <label class="field-label">4. The kill switch in commit <code>7d3f1ac</code> was a Chekhov's gun left on stage by a teammate. How would you have caught that during code review or pre-prod testing? What does that say about your standard for "feature flag merged" today?</label>
+      <textarea id="hotwash_q4" rows="3"></textarea>
+
+      <label class="field-label">5. If outside counsel had filed their response <em>before</em> you produced the sworn timeline, what would you have escalated to whom? Walk through the call.</label>
+      <textarea id="hotwash_q5" rows="3"></textarea>
+
+      <label class="field-label">6. The phisher's choice of Message-ID format triggered the AI's normalization collision. Is that a SecureCatch bug, an AI vendor bug, an analyst's bug, or none of those? Where does this kind of issue live on your accountability map?</label>
+      <textarea id="hotwash_q6" rows="3"></textarea>
+
+      <label class="field-label">7. Theo clicked a button that had been clicked 200+ times before with no incident. What changes the next time Theo logs in? What changes for Theo's manager?</label>
+      <textarea id="hotwash_q7" rows="3"></textarea>
+
+      <label class="field-label">8. What surprised you most about how this played out?</label>
+      <textarea id="hotwash_q8" rows="3"></textarea>
+
+      <label class="field-label">9. If you could change one thing about our actual response process based on this exercise, what would it be?</label>
+      <textarea id="hotwash_q9" rows="3"></textarea>
+
+      <label class="field-label">10. Where did time pressure cost us — a decision made too fast, or one we sat on too long?</label>
+      <textarea id="hotwash_q10" rows="3"></textarea>
+      <!-- TTX:HOTWASH_END -->
+    </section>
+
+    <!-- AAR prompts -------------------------------------------- -->
+    <section class="section" id="aar" data-toc="AAR Prompts">
+      <h2 class="section-title">After-Action Capture</h2>
+      <p class="section-subtitle">Fill these in within 24 hours while details are fresh. The <code>/tabletop-aar</code> skill ingests this section to draft the formal AAR.</p>
+      <!-- TTX:AAR_PROMPTS_START -->
+      <label class="field-label">Executive summary (3–5 sentences, plain language). What did we exercise, how did the team perform, what's the one most important thing to do next?</label>
+      <textarea id="aar_exec_summary" rows="4"></textarea>
+
+      <label class="field-label">What went well? (Be specific — name behaviors, not people. Example: "IC declared the incident at T+5 and named a single bridge channel" — not "good leadership.")</label>
+      <textarea id="aar_what_went_well" rows="4"></textarea>
+
+      <label class="field-label">What didn't go well? (Concrete failures or near-misses. Example: "Comms posture was undecided at T+30 and a press DM forced the call before consensus was reached.")</label>
+      <textarea id="aar_what_didnt" rows="4"></textarea>
+
+      <label class="field-label">Gaps surfaced (technical, process, knowledge, ownership). One per line. Pull from <code>forms/gaps-and-findings.md</code>.</label>
+      <textarea id="aar_gaps" rows="6" placeholder="- No graceful abort signal in the remediate route&#10;- purgeResults audit trail only writes after loop completes&#10;- Kill switch (7d3f1ac) added but never plumbed into route&#10;- Authority to take SecureCatch offline was not pre-defined&#10;- ..."></textarea>
+
+      <label class="field-label">Action items — owner, due date, what "done" looks like. Maximum 7 (more goes to follow-up backlog).</label>
+      <textarea id="aar_actions" rows="7" placeholder="- [Eng Lead / +7d] Wire kill switch into route handler with test coverage — done when flag flip blocks remediate route in CI&#10;- [Eng Lead / +14d] Write purgeResults to DB incrementally — done when killing process mid-loop preserves per-user audit&#10;- [IC + Exec / +3d] Document who has authority to take SecureCatch offline — done when escalation matrix is signed off&#10;- [GC + Eng / +7d] Litigation-hold awareness training for engineers — done when sworn-timeline deliverable is rehearsed once&#10;- ..."></textarea>
+
+      <label class="field-label">Recommendations (higher-altitude than action items — about posture, not single tasks).</label>
+      <textarea id="aar_next" rows="4" placeholder="- Adopt a 'destructive operations require a written abort plan' standard for new SecureCatch routes&#10;- Pre-bake comms templates for 'destructive action with overscoped blast radius'&#10;- ..."></textarea>
+
+      <label class="field-label">What we'd do differently if it were real (read by leadership).</label>
+      <textarea id="aar_real" rows="4"></textarea>
+
+      <div class="checklist" style="margin-top: 16px;">
+        <label><input type="checkbox" id="aar_dist_team"> Distributed to the participating team</label>
+        <label><input type="checkbox" id="aar_dist_leadership"> Distributed to leadership / stakeholders</label>
+        <label><input type="checkbox" id="aar_actions_filed"> Action items filed in the tracker</label>
+        <label><input type="checkbox" id="aar_followup_scheduled"> Follow-up review scheduled (30/60/90 days)</label>
+        <label><input type="checkbox" id="aar_kill_switch_filed"> Kill-switch wiring filed as P2 (if real gap)</label>
+        <label><input type="checkbox" id="aar_purgeresults_filed"> Incremental purgeResults write filed as P2 (if real gap)</label>
+      </div>
+      <!-- TTX:AAR_PROMPTS_END -->
+    </section>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ---------------------------------------------------------
+  // Config & namespace
+  // ---------------------------------------------------------
+  var SLUG = (document.documentElement.getAttribute('data-slug') || 'ttx').replace(/[^a-z0-9-]/gi, '-').toLowerCase() || 'ttx';
+  var DURATION_SEC = parseInt(document.documentElement.getAttribute('data-duration'), 10);
+  if (!DURATION_SEC || isNaN(DURATION_SEC)) DURATION_SEC = 5400; // 90 min default
+  var NS = 'ttx:' + SLUG + ':';
+
+  function ls(key) { return NS + key; }
+  function getLS(key, fallback) {
+    try { var v = localStorage.getItem(ls(key)); return v === null ? fallback : v; }
+    catch(e) { return fallback; }
+  }
+  function setLS(key, val) {
+    try { localStorage.setItem(ls(key), val); } catch(e) {}
+  }
+  function delLS(key) { try { localStorage.removeItem(ls(key)); } catch(e) {} }
+
+  // ---------------------------------------------------------
+  // Toast
+  // ---------------------------------------------------------
+  var toastEl = document.getElementById('toast');
+  var toastTimer = null;
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function() { toastEl.classList.remove('show'); }, 2400);
+  }
+
+  // ---------------------------------------------------------
+  // Theme
+  // ---------------------------------------------------------
+  var savedTheme = getLS('theme', 'dark');
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  document.getElementById('themeToggle').addEventListener('click', function() {
+    var cur = document.documentElement.getAttribute('data-theme');
+    var next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    setLS('theme', next);
+  });
+
+  // ---------------------------------------------------------
+  // Timer
+  // ---------------------------------------------------------
+  var timerEl = document.getElementById('timerDisplay');
+  var startBtn = document.getElementById('timerStart');
+  var pauseBtn = document.getElementById('timerPause');
+  var resetBtn = document.getElementById('timerReset');
+
+  var elapsed = parseInt(getLS('timer:elapsed', '0'), 10) || 0;
+  var running = getLS('timer:running', 'false') === 'true';
+  var lastTick = parseInt(getLS('timer:lastTick', '0'), 10) || 0;
+
+  // If page was running but reloaded, advance elapsed by wall time delta
+  if (running && lastTick) {
+    var delta = Math.floor((Date.now() - lastTick) / 1000);
+    if (delta > 0 && delta < 86400) elapsed += delta;
+  }
+
+  function fmtTime(secs) {
+    var s = Math.max(0, Math.floor(secs));
+    var h = Math.floor(s / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    var sec = s % 60;
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+    return 'T+' + pad(h) + ':' + pad(m) + ':' + pad(sec);
+  }
+
+  function updateTimerDisplay() {
+    timerEl.textContent = fmtTime(elapsed);
+    var pct = elapsed / DURATION_SEC;
+    var zone = 'green';
+    if (pct >= 0.75) zone = 'red';
+    else if (pct >= 0.25) zone = 'amber';
+    timerEl.setAttribute('data-zone', zone);
+  }
+
+  function persistTimer() {
+    setLS('timer:elapsed', String(elapsed));
+    setLS('timer:running', running ? 'true' : 'false');
+    setLS('timer:lastTick', String(Date.now()));
+  }
+
+  var tickerInterval = null;
+  function tick() {
+    elapsed += 1;
+    updateTimerDisplay();
+    persistTimer();
+    updateTocCurrent();
+  }
+
+  function startTimer() {
+    if (running) return;
+    running = true;
+    persistTimer();
+    tickerInterval = setInterval(tick, 1000);
+  }
+  function pauseTimer() {
+    if (!running) return;
+    running = false;
+    clearInterval(tickerInterval);
+    persistTimer();
+  }
+  function resetTimer() {
+    if (!confirm('Reset the timer to T+00:00:00?')) return;
+    running = false;
+    clearInterval(tickerInterval);
+    elapsed = 0;
+    persistTimer();
+    updateTimerDisplay();
+  }
+
+  startBtn.addEventListener('click', startTimer);
+  pauseBtn.addEventListener('click', pauseTimer);
+  resetBtn.addEventListener('click', resetTimer);
+
+  updateTimerDisplay();
+  if (running) tickerInterval = setInterval(tick, 1000);
+
+  window.addEventListener('beforeunload', persistTimer);
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) persistTimer();
+  });
+
+  // ---------------------------------------------------------
+  // Inject reveal
+  // ---------------------------------------------------------
+  var injects = document.querySelectorAll('.inject-wrap');
+  function applyInjectState(wrap) {
+    var id = wrap.getAttribute('data-inject-id');
+    var revealed = getLS('inject:' + id, 'false') === 'true';
+    wrap.setAttribute('data-revealed', revealed ? 'true' : 'false');
+  }
+  function revealInject(wrap, recordTime) {
+    var id = wrap.getAttribute('data-inject-id');
+    setLS('inject:' + id, 'true');
+    if (recordTime !== false) {
+      setLS('inject:' + id + ':revealedAt', String(elapsed));
+    }
+    wrap.setAttribute('data-revealed', 'true');
+  }
+  function hideInject(wrap) {
+    var id = wrap.getAttribute('data-inject-id');
+    delLS('inject:' + id);
+    delLS('inject:' + id + ':revealedAt');
+    wrap.setAttribute('data-revealed', 'false');
+  }
+  injects.forEach(function(wrap) {
+    applyInjectState(wrap);
+    var btn = wrap.querySelector('.reveal-btn');
+    if (btn) btn.addEventListener('click', function() { revealInject(wrap); });
+  });
+  document.getElementById('revealAllBtn').addEventListener('click', function() {
+    injects.forEach(function(w) { revealInject(w); });
+    toast('All injects revealed.');
+  });
+  document.getElementById('hideAllBtn').addEventListener('click', function() {
+    if (!confirm('Hide all injects? (Reveal-time history is cleared.)')) return;
+    injects.forEach(function(w) { hideInject(w); });
+    toast('All injects hidden.');
+  });
+
+  // ---------------------------------------------------------
+  // Form persistence
+  // ---------------------------------------------------------
+  var formFields = document.querySelectorAll('main textarea, main input[type="text"], main input[type="checkbox"], main select');
+  formFields.forEach(function(el) {
+    if (!el.id) return;
+    var key = 'field:' + el.id;
+    var saved = getLS(key, null);
+    if (saved !== null) {
+      if (el.type === 'checkbox') el.checked = saved === 'true';
+      else el.value = saved;
+    }
+    el.addEventListener('input', function() {
+      setLS(key, el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value);
+    });
+    el.addEventListener('change', function() {
+      setLS(key, el.type === 'checkbox' ? (el.checked ? 'true' : 'false') : el.value);
+    });
+  });
+
+  // ---------------------------------------------------------
+  // Decision log rows (built with safe DOM methods, no innerHTML)
+  // ---------------------------------------------------------
+  var logBody = document.getElementById('decisionLogBody');
+  var addRowBtn = document.getElementById('addDecisionRow');
+
+  function makeCell(tagName, fieldName, opts) {
+    opts = opts || {};
+    var td = document.createElement('td');
+    var input;
+    if (tagName === 'textarea') {
+      input = document.createElement('textarea');
+      input.rows = opts.rows || 2;
+    } else {
+      input = document.createElement('input');
+      input.type = 'text';
+    }
+    input.setAttribute('data-field', fieldName);
+    if (opts.placeholder) input.placeholder = opts.placeholder;
+    if (opts.value) input.value = opts.value;
+    td.appendChild(input);
+    return { td: td, input: input };
+  }
+
+  function makeRow(data) {
+    data = data || {};
+    var rowId = data.id || ('drow_' + Date.now() + '_' + Math.floor(Math.random() * 1000));
+    var tr = document.createElement('tr');
+    tr.setAttribute('data-row-id', rowId);
+
+    var timeCell = makeCell('input', 'time', {
+      placeholder: 'T+--:--',
+      value: data.time !== undefined ? data.time : fmtTime(elapsed)
+    });
+    var decisionCell = makeCell('textarea', 'decision', {
+      placeholder: 'What was decided',
+      value: data.decision || ''
+    });
+    var ownerCell = makeCell('input', 'owner', {
+      placeholder: 'Owner',
+      value: data.owner || ''
+    });
+    var rationaleCell = makeCell('textarea', 'rationale', {
+      placeholder: 'Why',
+      value: data.rationale || ''
+    });
+
+    var actionsCell = document.createElement('td');
+    actionsCell.className = 'actions';
+    var del = document.createElement('button');
+    del.className = 'row-delete';
+    del.title = 'Delete row';
+    del.textContent = '×';
+    del.addEventListener('click', function() {
+      if (!confirm('Delete this decision log row?')) return;
+      tr.parentNode.removeChild(tr);
+      persistRows();
+    });
+    actionsCell.appendChild(del);
+
+    tr.appendChild(timeCell.td);
+    tr.appendChild(decisionCell.td);
+    tr.appendChild(ownerCell.td);
+    tr.appendChild(rationaleCell.td);
+    tr.appendChild(actionsCell);
+
+    [timeCell.input, decisionCell.input, ownerCell.input, rationaleCell.input].forEach(function(f) {
+      f.addEventListener('input', persistRows);
+    });
+
+    return tr;
+  }
+
+  function persistRows() {
+    var rows = [];
+    logBody.querySelectorAll('tr').forEach(function(tr) {
+      var row = { id: tr.getAttribute('data-row-id') };
+      tr.querySelectorAll('[data-field]').forEach(function(f) {
+        row[f.getAttribute('data-field')] = f.value;
+      });
+      rows.push(row);
+    });
+    setLS('decisionLog', JSON.stringify(rows));
+  }
+
+  function loadRows() {
+    var saved = getLS('decisionLog', null);
+    if (!saved) return;
+    try {
+      var rows = JSON.parse(saved);
+      rows.forEach(function(r) { logBody.appendChild(makeRow(r)); });
+    } catch(e) {}
+  }
+
+  addRowBtn.addEventListener('click', function() {
+    logBody.appendChild(makeRow());
+    persistRows();
+  });
+
+  loadRows();
+
+  // ---------------------------------------------------------
+  // Clear state
+  // ---------------------------------------------------------
+  document.getElementById('clearStateBtn').addEventListener('click', function() {
+    if (!confirm('Clear ALL state for this scenario? This wipes the timer, all form fields, the decision log, and inject reveal history. This cannot be undone.')) return;
+    var keys = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf(NS) === 0) keys.push(k);
+    }
+    keys.forEach(function(k) { localStorage.removeItem(k); });
+    location.reload();
+  });
+
+  // ---------------------------------------------------------
+  // Export JSON
+  // ---------------------------------------------------------
+  document.getElementById('exportBtn').addEventListener('click', function() {
+    var fields = {};
+    formFields.forEach(function(el) {
+      if (!el.id) return;
+      fields[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+    });
+    var injectsData = [];
+    injects.forEach(function(w) {
+      var id = w.getAttribute('data-inject-id');
+      injectsData.push({
+        id: id,
+        revealed: w.getAttribute('data-revealed') === 'true',
+        revealedAt: getLS('inject:' + id + ':revealedAt', null),
+        scheduledAt: w.getAttribute('data-reveal-time')
+      });
+    });
+    var rows = [];
+    logBody.querySelectorAll('tr').forEach(function(tr) {
+      var row = {};
+      tr.querySelectorAll('[data-field]').forEach(function(f) {
+        row[f.getAttribute('data-field')] = f.value;
+      });
+      rows.push(row);
+    });
+    var titleEl = document.querySelector('.topbar-meta h1');
+    var meta = {
+      slug: SLUG,
+      title: titleEl ? titleEl.textContent : '',
+      duration_seconds: DURATION_SEC,
+      exported_at: new Date().toISOString()
+    };
+    var payload = {
+      meta: meta,
+      timer: { elapsed_seconds: elapsed, formatted: fmtTime(elapsed) },
+      fields: fields,
+      decision_log: rows,
+      injects: injectsData
+    };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var date = new Date().toISOString().slice(0, 10);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = SLUG + '-' + date + '.json';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+    toast('Exported ' + a.download);
+  });
+
+  // ---------------------------------------------------------
+  // TOC build & scrollspy
+  // ---------------------------------------------------------
+  var tocList = document.getElementById('tocList');
+  var sections = document.querySelectorAll('section.section[id][data-toc]');
+  var phaseIdx = 0;
+  sections.forEach(function(sec) {
+    var li = document.createElement('li');
+    var a = document.createElement('a');
+    a.href = '#' + sec.id;
+    var label = sec.getAttribute('data-toc');
+    if (sec.classList.contains('phase')) {
+      phaseIdx++;
+      var counter = document.createElement('span');
+      counter.className = 'toc-counter';
+      counter.textContent = phaseIdx < 10 ? '0' + phaseIdx : String(phaseIdx);
+      a.appendChild(counter);
+      a.appendChild(document.createTextNode(label));
+    } else {
+      a.textContent = label;
+    }
+    a.setAttribute('data-target', sec.id);
+    a.addEventListener('click', function() {
+      if (window.innerWidth <= 900) closeMobileToc();
+    });
+    li.appendChild(a);
+    tocList.appendChild(li);
+  });
+
+  function updateTocCurrent() {
+    var scrollY = window.scrollY + 120;
+    var current = null;
+    sections.forEach(function(sec) {
+      if (sec.offsetTop <= scrollY) current = sec.id;
+    });
+    tocList.querySelectorAll('a').forEach(function(a) {
+      if (a.getAttribute('data-target') === current) a.classList.add('active');
+      else a.classList.remove('active');
+    });
+  }
+  window.addEventListener('scroll', updateTocCurrent, { passive: true });
+  updateTocCurrent();
+
+  // ---------------------------------------------------------
+  // Mobile TOC
+  // ---------------------------------------------------------
+  var toc = document.getElementById('toc');
+  function openMobileToc() { toc.setAttribute('data-open', 'true'); }
+  function closeMobileToc() { toc.removeAttribute('data-open'); }
+  document.getElementById('tocToggle').addEventListener('click', openMobileToc);
+  document.getElementById('tocClose').addEventListener('click', closeMobileToc);
+
+  // ---------------------------------------------------------
+  // Keyboard shortcuts: Space toggles timer; Ctrl/Cmd+Shift+R resets
+  // ---------------------------------------------------------
+  document.addEventListener('keydown', function(e) {
+    if (e.target.matches('input, textarea, select')) return;
+    if (e.key === ' ' || e.code === 'Space') {
+      e.preventDefault();
+      if (running) pauseTimer(); else startTimer();
+    } else if (e.key === 'r' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+      e.preventDefault();
+      resetTimer();
+    }
+  });
+
+})();
+</script>
+
+</body>
+</html>
