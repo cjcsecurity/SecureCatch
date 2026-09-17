@@ -1,237 +1,219 @@
-# SecureCatch — Setup Guide
+# SecureCatch setup
+
+This guide configures a local or single-instance SecureCatch deployment. Complete the access-control setup before adding third-party credentials.
 
 ## Prerequisites
 
-| Requirement | Version |
-|-------------|---------|
-| Node.js | v18+ (v20+ recommended) |
-| npm | v9+ |
-| Google Workspace | Admin with Domain-Wide Delegation access |
-| Jira | Atlassian Cloud or Server with API token |
-| VirusTotal | API key (free tier works) |
-| OpenRouter | API key + model access |
+| Requirement | Supported configuration |
+| --- | --- |
+| Node.js | 20 or newer; use an active LTS release for deployment |
+| npm | Version bundled with the selected Node release |
+| Google Workspace | Administrator able to configure domain-wide delegation |
+| Jira | Atlassian account with API-token access to the target project |
+| VirusTotal | API key; the free tier works for low-volume testing |
+| OpenRouter | API key and access to the selected model |
 
----
-
-## 1. Clone & Install Dependencies
+## 1. Install
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/cjcsecurity/SecureCatch.git
 cd SecureCatch
-npm install
-```
-
----
-
-## 2. Configure Environment Variables
-
-Copy the template and fill in your real credentials:
-
-```bash
+npm ci
 cp .env.local.example .env.local
 ```
 
-Then edit `.env.local`:
+Use `npm ci` to install the reviewed lockfile exactly.
+
+## 2. Configure operator access
+
+Create a long, unique password. The command reads it from standard input and prints only the scrypt hash that belongs in `.env.local`:
 
 ```bash
-# Jira Configuration
-JIRA_HOST=yourorg.atlassian.net          # e.g. snapdocs.atlassian.net
-JIRA_EMAIL=service-account@yourorg.com   # Jira account email
-JIRA_API_TOKEN=your-jira-api-token       # From: id.atlassian.com → Security → API tokens
-JIRA_SECOPS_PROJECT_KEY=SECOPS           # Your Jira project key
-
-# Google Workspace Configuration
-GOOGLE_CLIENT_EMAIL=service-account@your-project.iam.gserviceaccount.com
-GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-GOOGLE_SUBJECT_EMAIL=admin@yourorg.com   # Email to impersonate (must have Gmail + Alert Center access)
-GOOGLE_ADMIN_EMAIL=admin@yourorg.com     # Super Admin email for Directory API
-
-# VirusTotal
-VIRUSTOTAL_API_KEY=your-virustotal-api-key
-
-# OpenRouter
-OPENROUTER_API_KEY=your-openrouter-api-key
-OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
-
-# Database (SQLite — no changes needed for local dev)
-DATABASE_URL=file:./dev.db
+printf '%s' 'choose-a-long-unique-password' | npm run auth:hash-password
 ```
 
----
+Generate a separate signing secret:
 
-## 3. Google Workspace Service Account Setup
+```bash
+openssl rand -base64 48
+```
 
-SecureCatch uses a **Google Service Account with Domain-Wide Delegation** to access Gmail, Alert Center, and the Admin SDK on behalf of users.
+Set the results:
 
-### 3a. Create a Service Account
+```dotenv
+SECURECATCH_ADMIN_PASSWORD_HASH=scrypt$16384$8$1$...
+SECURECATCH_SESSION_SECRET=replace-with-the-generated-random-secret
+```
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) → **IAM & Admin → Service Accounts**
-2. Click **Create Service Account**
-3. Give it a name (e.g., `securecatch-soar`)
-4. Click **Done** (no roles needed at this level)
-5. Click on the new service account → **Keys** tab → **Add Key → Create new key → JSON**
-6. Save the downloaded JSON file — you'll extract `client_email` and `private_key` from it
+The password itself is never stored. Sessions expire after eight hours. Changing the signing secret invalidates every existing session.
 
-### 3b. Enable Domain-Wide Delegation
+Keep the remediation kill switch off during setup:
 
-1. In the service account detail page, click **Edit** → check **Enable Google Workspace Domain-wide Delegation**
-2. Save, then note the **Client ID** (numeric ID shown on the service account page)
+```dotenv
+SECURECATCH_ENABLE_DESTRUCTIVE_ACTIONS=false
+```
 
-### 3c. Grant OAuth Scopes in Google Admin
+## 3. Configure Jira
 
-1. Go to [admin.google.com](https://admin.google.com) → **Security → API Controls → Domain-wide delegation**
-2. Click **Add new** and enter:
-   - **Client ID:** (the numeric Client ID from step 3b)
-   - **OAuth Scopes:**
-     ```
-     https://www.googleapis.com/auth/gmail.readonly,
-     https://www.googleapis.com/auth/gmail.modify,
-     https://www.googleapis.com/auth/admin.directory.user.readonly,
-     https://www.googleapis.com/auth/apps.alerts
-     ```
+Create an API token from the Atlassian account-security page. Use a dedicated account with only the project permissions SecureCatch needs.
 
-### 3d. Enable Required APIs
+```dotenv
+JIRA_HOST=yourorg.atlassian.net
+JIRA_EMAIL=service-account@yourorg.com
+JIRA_API_TOKEN=your-jira-api-token
+JIRA_SECOPS_PROJECT_KEY=SECOPS
+```
 
-In Google Cloud Console → **APIs & Services → Enable APIs**:
+By default, ingestion finds open issues in that project whose summary contains `User-reported phishing`. If your intake uses a label, issue type, reporter, or custom field, set a complete query:
+
+```dotenv
+JIRA_PHISHING_JQL=project = "SECOPS" AND labels = phishing-intake AND statusCategory != Done ORDER BY created DESC
+```
+
+The expected issue description includes `Actor:`, `Reported by:`, and, optionally, `Activity date:` lines. Jira workflows differ, so validate the project’s closing transition in a test ticket before enabling production use.
+
+## 4. Configure Google Workspace
+
+SecureCatch uses a Google service account with domain-wide delegation to read reported messages and, when separately enabled, trash an identified message from user mailboxes.
+
+### Create the service account
+
+1. In Google Cloud Console, open **IAM & Admin > Service Accounts**.
+2. Create a service account without project roles.
+3. Open the account, select **Keys > Add key > Create new key**, and download the JSON key.
+4. Edit the service account and enable Google Workspace domain-wide delegation.
+5. Record its numeric OAuth client ID.
+
+Store the private key outside the repository. Never commit `.env.local` or the downloaded JSON file.
+
+### Grant OAuth scopes
+
+In Google Admin, open **Security > API controls > Domain-wide delegation** and add the service account client ID with these scopes:
+
+```text
+https://www.googleapis.com/auth/gmail.readonly,
+https://www.googleapis.com/auth/gmail.modify,
+https://www.googleapis.com/auth/admin.directory.user.readonly,
+https://www.googleapis.com/auth/apps.alerts
+```
+
+`gmail.modify` enables destructive mailbox actions. If you are evaluating only the interface or analysis flow, use a test Workspace and leave the SecureCatch remediation kill switch disabled.
+
+Enable these APIs in the Google Cloud project:
+
 - Gmail API
 - Google Workspace Alert Center API
 - Admin SDK API
 
-### 3e. Set Environment Variables
+Add the credentials to `.env.local`:
 
-From the downloaded JSON key file:
-
-```bash
-GOOGLE_CLIENT_EMAIL=<value of "client_email" in the JSON>
-GOOGLE_PRIVATE_KEY=<value of "private_key" in the JSON — keep the \n escapes>
-GOOGLE_SUBJECT_EMAIL=<a Google Workspace admin email to impersonate>
-GOOGLE_ADMIN_EMAIL=<same or another super admin email>
+```dotenv
+GOOGLE_CLIENT_EMAIL=service-account@your-project.iam.gserviceaccount.com
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+GOOGLE_SUBJECT_EMAIL=admin@yourorg.com
+GOOGLE_ADMIN_EMAIL=admin@yourorg.com
 ```
 
-> **Note:** When pasting `GOOGLE_PRIVATE_KEY` into `.env.local`, keep it on one line with `\n` as literal characters (not real newlines), and wrap the whole value in double quotes.
+Keep `GOOGLE_PRIVATE_KEY` on one line, preserve literal `\n` sequences, and wrap the value in double quotes.
 
----
+## 5. Configure analysis services
 
-## 4. Jira API Token
+Create a VirusTotal API key and an OpenRouter API key, then set:
 
-1. Go to [id.atlassian.com](https://id.atlassian.com) → **Security → API tokens → Create API token**
-2. Copy the token and set it as `JIRA_API_TOKEN`
-3. Set `JIRA_EMAIL` to the email of the Atlassian account the token belongs to
-4. Set `JIRA_HOST` to your Atlassian subdomain (e.g., `yourorg.atlassian.net`)
-5. Set `JIRA_SECOPS_PROJECT_KEY` to your SECOPS board project key
-
----
-
-## 5. VirusTotal API Key
-
-1. Create an account at [virustotal.com](https://www.virustotal.com)
-2. Go to **Profile → API Key**
-3. Copy the key and set it as `VIRUSTOTAL_API_KEY`
-
-> **Free tier limit:** 4 requests/minute, 500/day. The app automatically rate-limits URL checks.
-
----
-
-## 6. OpenRouter API Key
-
-1. Create an account at [openrouter.ai](https://openrouter.ai)
-2. Go to **Keys → Create key**
-3. Set it as `OPENROUTER_API_KEY`
-4. Set `OPENROUTER_MODEL` to your preferred model:
-   - `anthropic/claude-3.5-sonnet` (recommended)
-   - `openai/gpt-4o`
-   - `google/gemini-flash-1.5`
-
----
-
-## 7. Initialize the Database
-
-The SQLite database is automatically created. Run migrations to set up the schema:
-
-```bash
-npx prisma migrate deploy
+```dotenv
+VIRUSTOTAL_API_KEY=your-virustotal-api-key
+OPENROUTER_API_KEY=your-openrouter-api-key
+OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
 ```
 
-To reset the database during development:
+Choose any OpenRouter model that supports JSON-object responses. VirusTotal’s public API is rate-limited; SecureCatch spaces URL lookups, but your account’s current quota remains authoritative.
 
-```bash
-npx prisma migrate reset
+Email evidence is sent to the configured model provider for classification, and indicators are sent to VirusTotal for enrichment. Confirm that this fits your organization’s data-handling rules.
+
+## 6. Initialize the database
+
+The included schema uses SQLite:
+
+```dotenv
+DATABASE_URL=file:./dev.db
 ```
 
-To inspect the database with a GUI:
+Apply the committed migration and generate the Prisma client:
+
+```bash
+npm run db:migrate
+npm run db:generate
+```
+
+For local inspection:
 
 ```bash
 npx prisma studio
 ```
 
----
+SQLite requires persistent local storage and one application instance. Moving to PostgreSQL is a schema and migration change; do not point the existing SQLite migration at a PostgreSQL URL.
 
-## 8. Start the Application
+## 7. Validate before connecting production data
 
 ```bash
-# Development mode (with hot reload)
+npm run check
+```
+
+Start the application:
+
+```bash
 npm run dev
-
-# OR use the startup script (starts dev server + opens browser)
-./start.sh
 ```
 
-The app will be available at **http://localhost:3000**
+Open [http://localhost:3000](http://localhost:3000), sign in, and validate this sequence:
 
----
+1. Run ingestion against a test Jira project.
+2. Open an alert and run analysis.
+3. Review the headers, message, indicators, classification, and confidence.
+4. Use **Mark as safe / close** only after confirming the Jira transition behavior.
+5. Verify logs and database state after every external action.
 
-## Workflow
+## 8. Enable remediation only after a dry run
 
+Domain-wide remediation can alter every mailbox in the delegated Workspace domain. Before enabling it:
+
+- use a test Workspace or a tightly controlled test message;
+- confirm the RFC 2822 Message-ID resolution;
+- review the service account scopes and impersonated administrator;
+- confirm operator authentication and HTTPS at the deployment boundary;
+- back up the SQLite database;
+- verify Jira comments and closing transitions.
+
+Then set the server-side kill switch and restart the application:
+
+```dotenv
+SECURECATCH_ENABLE_DESTRUCTIVE_ACTIONS=true
 ```
-1. Open the dashboard at http://localhost:3000
-2. Click "Run Ingestion" — fetches unprocessed Jira SECOPS tickets
-3. Click any alert row to open the detail view
-4. Click "Run Analysis" — runs VirusTotal OSINT + AI classification
-5. Review: AI reasoning, OSINT scores, raw email headers/body/links
-6. Choose an action:
-   └── "Approve & Remediate" → domain-wide email purge + close Jira ticket
-   └── "Mark as Safe / Close" → false positive, close Jira ticket
+
+The UI still requires an authenticated analyst, an alert in `AWAITING_REVIEW`, completed analysis, and exact entry of the Jira ticket key.
+
+## Production boundary
+
+Build and start the application with:
+
+```bash
+npm run build
+npm run start
 ```
 
----
-
-## Production Deployment
-
-For production, switch from SQLite to PostgreSQL:
-
-1. Update `DATABASE_URL` in your environment:
-   ```
-   DATABASE_URL=postgresql://user:password@host:5432/securecatch
-   ```
-
-2. Update `prisma/schema.prisma` datasource provider:
-   ```prisma
-   datasource db {
-     provider = "postgresql"
-   }
-   ```
-
-3. Run migrations:
-   ```bash
-   npx prisma migrate deploy
-   ```
-
-4. Build and start:
-   ```bash
-   npm run build
-   npm run start
-   ```
-
----
+Deploy it only on an internal network or behind an identity-aware access proxy. Terminate TLS before traffic reaches the app, keep all secrets in the platform’s secret manager, persist and back up the database, and restrict outbound access to the integration endpoints you use.
 
 ## Troubleshooting
 
-| Issue | Solution |
-|-------|----------|
-| `Missing Jira configuration` | Ensure `JIRA_HOST`, `JIRA_EMAIL`, `JIRA_API_TOKEN` are set in `.env.local` |
-| `Missing Google credentials` | Ensure `GOOGLE_CLIENT_EMAIL` and `GOOGLE_PRIVATE_KEY` are set |
-| `Alert Center API failed` | Ensure the service account has the `apps.alerts` scope granted in Google Admin |
-| `Gmail API failed` | Ensure Domain-Wide Delegation is enabled and `gmail.modify` scope is granted |
-| `No tickets found` | Check that your Jira project key is correct and the filter matches your ticket format |
-| `AI parse error` | The model returned malformed JSON — try a different `OPENROUTER_MODEL` |
-| `Database errors` | Run `npx prisma migrate deploy` to ensure schema is up to date |
+| Symptom | Check |
+| --- | --- |
+| `Authentication is not configured` | Password hash and signing secret are present; signing secret is at least 32 characters |
+| `Invalid credentials` | The plaintext password matches the value used to generate the scrypt hash |
+| `Missing Jira configuration` | Jira host, email, token, and project key are set |
+| `Missing Google credentials` | Service account email and escaped private key are set |
+| Alert Center request fails | Alert Center API is enabled and `apps.alerts` was delegated |
+| Gmail request fails | Gmail API is enabled and required Gmail scopes were delegated |
+| No tickets are found | Project key and the ticket format expected by the ingestion parser match your test issue |
+| Model response is rejected | Selected model supports JSON-object output and returned the required classification schema |
+| Remediation is disabled | Keep it disabled during setup; otherwise check the server-side kill switch after completing the dry-run checklist |
+| Alert is `ACTION_FAILED` | Inspect server logs and both external systems before retrying; an earlier step may already have succeeded |

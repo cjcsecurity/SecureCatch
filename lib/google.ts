@@ -20,7 +20,7 @@ export interface EmailData {
 
 export interface AlertCenterResult {
   googleMessageId: string;
-  rfc2822MessageId: string;
+  rfc2822MessageId: string | null;
 }
 
 function getGoogleAuth(subject?: string) {
@@ -47,8 +47,9 @@ function getGoogleAuth(subject?: string) {
 }
 
 /**
- * Queries Google Workspace Alert Center API to find exact messageId and rfc2822MessageId
- * for a phishing alert based on sender email and activity date.
+ * Queries Google Workspace Alert Center for the message associated with the
+ * reported sender. The RFC 2822 ID is optional in Alert Center payloads and is
+ * resolved from Gmail headers during the next ingestion step when absent.
  */
 export async function findAlertByActor(
   actorEmail: string,
@@ -59,43 +60,69 @@ export async function findAlertByActor(
 
   try {
     const filter = `type = "USER_REPORTED_PHISHING"`;
-    const response = await alertCenter.alerts.list({
-      filter,
-      pageSize: 50,
-    });
+    const targetActor = normalizeEmail(actorEmail);
+    const candidates: Array<AlertCenterResult & { timestamp: number }> = [];
+    let pageToken: string | undefined;
+    let pages = 0;
 
-    const alerts = response.data.alerts ?? [];
+    do {
+      const response = await alertCenter.alerts.list({
+        filter,
+        orderBy: "create_time desc",
+        pageSize: 50,
+        pageToken,
+      });
 
-    for (const alert of alerts) {
-      const alertData = alert.data as Record<string, unknown> | undefined;
-      if (!alertData) continue;
+      for (const alert of response.data.alerts ?? []) {
+        const alertData = alert.data as Record<string, unknown> | undefined;
+        if (!alertData) continue;
+        const maliciousEntity = alertData.maliciousEntity as Record<string, unknown> | undefined;
+        const entity = maliciousEntity?.entity as Record<string, unknown> | undefined;
+        const possibleActors = [
+          maliciousEntity?.fromHeader,
+          entity?.emailAddress,
+          (alertData.metadata as Record<string, unknown> | undefined)?.actor,
+          alertData.actor,
+        ];
+        if (!possibleActors.some((value) => normalizeEmail(value) === targetActor)) continue;
 
-      // Check if this alert matches our actor
-      const messages = alertData.messages as Array<Record<string, unknown>> | undefined;
-      if (!messages) continue;
-
-      for (const msg of messages) {
-        const id = msg.messageId as string | undefined;
-        const rfc = msg.rfc2822MessageId as string | undefined;
-
-        if (id && rfc) {
-          // Match by actor email in the alert metadata
-          const md = alertData.metadata as Record<string, unknown> | undefined;
-          const actor = (md?.actor ?? alertData.actor) as string | undefined;
-
-          if (actor && actor.toLowerCase() === actorEmail.toLowerCase()) {
-            return { googleMessageId: id, rfc2822MessageId: rfc };
-          }
+        const messages = alertData.messages as Array<Record<string, unknown>> | undefined;
+        for (const message of messages ?? []) {
+          const googleMessageId = message.messageId;
+          if (typeof googleMessageId !== "string" || !googleMessageId) continue;
+          const rfc = message.rfc2822MessageId;
+          const eventTime = message.date ?? message.sentTime ?? alert.startTime ?? alert.createTime;
+          const timestamp = typeof eventTime === "string" ? Date.parse(eventTime) : Number.NaN;
+          candidates.push({
+            googleMessageId,
+            rfc2822MessageId: typeof rfc === "string" && rfc ? rfc : null,
+            timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+          });
         }
       }
-    }
 
-    // Fallback: try to find by date proximity if no actor match
-    return null;
+      pageToken = response.data.nextPageToken ?? undefined;
+      pages++;
+    } while (pageToken && pages < 10);
+
+    if (candidates.length === 0) return null;
+    if (!activityDate) return candidates[0];
+    const targetTime = activityDate.getTime();
+    return candidates.sort((a, b) => {
+      const aDistance = a.timestamp ? Math.abs(a.timestamp - targetTime) : Number.MAX_SAFE_INTEGER;
+      const bDistance = b.timestamp ? Math.abs(b.timestamp - targetTime) : Number.MAX_SAFE_INTEGER;
+      return aDistance - bDistance;
+    })[0];
   } catch (error) {
     console.error("Alert Center API error:", error);
     throw new Error(`Alert Center API failed: ${String(error)}`);
   }
+}
+
+function normalizeEmail(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const match = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return (match?.[0] ?? value).trim().toLowerCase();
 }
 
 /**
@@ -259,12 +286,13 @@ export async function listAllDomainUsers(): Promise<string[]> {
 /**
  * Searches for a message in a user's Gmail inbox by rfc2822MessageId
  * and trashes it if found.
- * Returns true if the message was found and trashed.
+ * Distinguishes a clean miss from an API failure so a partial domain-wide
+ * operation cannot be reported as complete.
  */
 export async function trashMessageForUser(
   userEmail: string,
   rfc2822MessageId: string
-): Promise<boolean> {
+): Promise<"trashed" | "not_found" | "error"> {
   const auth = getGoogleAuth(userEmail);
   const gmail = google.gmail({ version: "v1", auth });
 
@@ -278,7 +306,7 @@ export async function trashMessageForUser(
 
     const messages = searchResponse.data.messages ?? [];
     if (messages.length === 0) {
-      return false;
+      return "not_found";
     }
 
     // Trash all found instances (should typically be just one)
@@ -291,10 +319,9 @@ export async function trashMessageForUser(
       }
     }
 
-    return true;
+    return "trashed";
   } catch (error) {
-    // User may not have Gmail or no access — log but don't fail
     console.warn(`Failed to process ${userEmail}:`, error);
-    return false;
+    return "error";
   }
 }

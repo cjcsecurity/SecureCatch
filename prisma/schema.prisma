@@ -2,12 +2,12 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client"
-  output   = "../lib/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 model PhishingAlert {
@@ -47,7 +47,7 @@ model PhishingAlert {
 
   // Workflow status
   status              String   @default("PENDING")
-  // PENDING -> INGESTED -> ANALYZING -> AWAITING_REVIEW -> REMEDIATED | CLOSED
+  // PENDING -> INGESTED -> ANALYSIS_RUNNING -> AWAITING_REVIEW -> REMEDIATED | CLOSED
 
   // Analyst action
   analystAction       String?  // "REMEDIATE" | "CLOSE"
@@ -56,5 +56,5 @@ model PhishingAlert {
   closedAt            DateTime?
 
   // Domain-wide purge results
-  purgeResults        String?  // JSON: { usersSearched: number, usersAffected: string[] }
+  purgeResults        String?  // JSON: { usersSearched, usersAffected, usersFailed }
 }

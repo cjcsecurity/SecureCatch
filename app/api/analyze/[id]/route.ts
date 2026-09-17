@@ -12,12 +12,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { enrichWithOSINT } from "@/lib/virustotal";
 import { analyzeEmail } from "@/lib/ai";
+import { authorizeApiRequest } from "@/lib/auth";
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await authorizeApiRequest(request, { mutation: true });
+  if (denied) return denied;
+
   const { id } = await params;
+  let claimed = false;
 
   try {
     const alert = await db.phishingAlert.findUnique({ where: { id } });
@@ -32,6 +37,21 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    const claim = await db.phishingAlert.updateMany({
+      where: {
+        id,
+        status: { in: ["INGESTED", "ANALYZING", "AWAITING_REVIEW", "ANALYSIS_FAILED"] },
+      },
+      data: { status: "ANALYSIS_RUNNING" },
+    });
+    if (claim.count !== 1) {
+      return NextResponse.json(
+        { error: "Analysis is already running or this alert can no longer be analyzed." },
+        { status: 409 }
+      );
+    }
+    claimed = true;
 
     // Parse stored data
     const headers = alert.rawEmailHeaders
@@ -61,22 +81,13 @@ export async function POST(
     }
 
     // Step 2: AI Analysis
-    let aiResult;
-    try {
-      aiResult = await analyzeEmail({
-        headers,
-        bodyText: alert.rawEmailBody ?? "",
-        bodyHtml: "",
-        extractedLinks,
-        osint: osintResults,
-      });
-    } catch (aiError) {
-      console.error("AI analysis failed:", aiError);
-      return NextResponse.json(
-        { error: `AI analysis failed: ${String(aiError)}` },
-        { status: 500 }
-      );
-    }
+    const aiResult = await analyzeEmail({
+      headers,
+      bodyText: alert.rawEmailBody ?? "",
+      bodyHtml: "",
+      extractedLinks,
+      osint: osintResults,
+    });
 
     // Step 3: Update the database
     const updated = await db.phishingAlert.update({
@@ -102,8 +113,18 @@ export async function POST(
     });
   } catch (error) {
     console.error("Analysis error:", error);
+    if (claimed) {
+      try {
+        await db.phishingAlert.updateMany({
+          where: { id, status: "ANALYSIS_RUNNING" },
+          data: { status: "ANALYSIS_FAILED" },
+        });
+      } catch (statusError) {
+        console.error("Failed to record analysis failure:", statusError);
+      }
+    }
     return NextResponse.json(
-      { error: `Analysis failed: ${String(error)}` },
+      { error: "Analysis failed. Review server logs, then retry." },
       { status: 500 }
     );
   }

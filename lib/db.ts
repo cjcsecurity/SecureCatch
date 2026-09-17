@@ -1,6 +1,4 @@
-import { PrismaClient } from "./generated/prisma/client";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import path from "path";
+import { PrismaClient } from "@prisma/client";
 
 // We use a global variable to prevent multiple Prisma Client instances in development
 const globalForPrisma = globalThis as unknown as {
@@ -8,9 +6,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient(): PrismaClient {
-  const dbPath = path.resolve(process.cwd(), "prisma", "dev.db");
-  const adapter = new PrismaBetterSqlite3({ url: dbPath });
-  return new PrismaClient({ adapter });
+  return new PrismaClient();
 }
 
 export const db = globalForPrisma.prisma ?? createPrismaClient();

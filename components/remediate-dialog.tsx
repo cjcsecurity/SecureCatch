@@ -16,13 +16,15 @@ import { AlertTriangle, ShieldCheck, Loader2 } from "lucide-react";
 
 interface RemediateDialogProps {
   alertId: string;
+  ticketKey: string;
   action: "REMEDIATE" | "CLOSE" | null;
   onClose: () => void;
 }
 
-export function RemediateDialog({ alertId, action, onClose }: RemediateDialogProps) {
+export function RemediateDialog({ alertId, ticketKey, action, onClose }: RemediateDialogProps) {
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState("");
+  const [confirmation, setConfirmation] = useState("");
   const router = useRouter();
 
   const isRemediate = action === "REMEDIATE";
@@ -34,8 +36,12 @@ export function RemediateDialog({ alertId, action, onClose }: RemediateDialogPro
     try {
       const res = await fetch(`/api/remediate/${alertId}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, note: note || undefined }),
+        headers: { "Content-Type": "application/json", "X-SecureCatch-Request": "1" },
+        body: JSON.stringify({
+          action,
+          note: note || undefined,
+          confirmation: isRemediate ? confirmation : undefined,
+        }),
       });
 
       const data = await res.json() as { message?: string; error?: string; purgeResults?: { usersSearched: number; usersAffected: string[] } };
@@ -89,6 +95,20 @@ export function RemediateDialog({ alertId, action, onClose }: RemediateDialogPro
         </DialogHeader>
 
         <div className="space-y-3">
+          {isRemediate && (
+            <label className="block text-sm">
+              <span className="text-muted-foreground">
+                Type <strong className="font-mono text-foreground">{ticketKey}</strong> to authorize
+              </span>
+              <input
+                className="mt-1.5 w-full rounded-md border border-border bg-muted/20 px-3 py-2 font-mono text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={confirmation}
+                onChange={(event) => setConfirmation(event.target.value)}
+                autoComplete="off"
+                disabled={loading}
+              />
+            </label>
+          )}
           <label className="block text-sm">
             <span className="text-muted-foreground">Analyst note (optional)</span>
             <textarea
@@ -108,7 +128,7 @@ export function RemediateDialog({ alertId, action, onClose }: RemediateDialogPro
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={loading}
+            disabled={loading || (isRemediate && confirmation !== ticketKey)}
             className={
               isRemediate
                 ? "bg-red-700 hover:bg-red-600 text-white"

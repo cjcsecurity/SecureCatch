@@ -65,7 +65,10 @@ export default function AlertDetailPage({ params }: PageProps) {
   async function runAnalysis() {
     setAnalyzing(true);
     try {
-      const res = await fetch(`/api/analyze/${id}`, { method: "POST" });
+      const res = await fetch(`/api/analyze/${id}`, {
+        method: "POST",
+        headers: { "X-SecureCatch-Request": "1" },
+      });
       const data = await res.json() as { message?: string; error?: string };
       if (!res.ok) {
         toast.error(data.error ?? "Analysis failed");
@@ -106,9 +109,11 @@ export default function AlertDetailPage({ params }: PageProps) {
     );
   }
 
-  const isActionable =
-    alert.status === "AWAITING_REVIEW" || alert.status === "INGESTED" || alert.status === "ANALYZING";
+  const isActionable = alert.status === "AWAITING_REVIEW";
   const isCompleted = alert.status === "REMEDIATED" || alert.status === "CLOSED";
+  const canAnalyze = ["INGESTED", "ANALYZING", "ANALYSIS_FAILED", "AWAITING_REVIEW"].includes(
+    alert.status
+  );
 
   return (
     <div className="min-h-screen">
@@ -141,7 +146,7 @@ export default function AlertDetailPage({ params }: PageProps) {
                 View in Jira
               </a>
             )}
-            {!isCompleted && (
+            {canAnalyze && (
               <Button
                 variant="outline"
                 size="sm"
@@ -284,7 +289,15 @@ export default function AlertDetailPage({ params }: PageProps) {
                 </Button>
                 {!isActionable && (
                   <p className="text-xs text-muted-foreground text-center">
-                    Run Analysis first to enable actions
+                    {alert.status === "ACTION_FAILED"
+                      ? alert.purgeResults
+                        ? `Action incomplete: ${alert.purgeResults.usersAffected.length} mailbox(es) changed, ${alert.purgeResults.usersFailed?.length ?? 0} mailbox operation(s) failed. Review logs and external-system state.`
+                        : "Review server logs and external-system state before taking further action"
+                      : alert.status === "REMEDIATING" || alert.status === "CLOSING"
+                        ? "An analyst action is already in progress"
+                        : alert.status === "ANALYSIS_RUNNING"
+                          ? "Analysis is in progress"
+                          : "Run Analysis first to enable actions"}
                   </p>
                 )}
               </CardContent>
@@ -475,6 +488,7 @@ export default function AlertDetailPage({ params }: PageProps) {
 
       <RemediateDialog
         alertId={id}
+        ticketKey={alert.jiraTicketKey}
         action={dialogAction}
         onClose={() => setDialogAction(null)}
       />

@@ -3,10 +3,14 @@
  * Returns all phishing alerts for the dashboard queue.
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { authorizeApiRequest } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = await authorizeApiRequest(request);
+  if (denied) return denied;
+
   try {
     const alerts = await db.phishingAlert.findMany({
       orderBy: { createdAt: "desc" },
