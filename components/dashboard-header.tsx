@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ShieldAlert, RefreshCw, Play } from "lucide-react";
+import { ShieldAlert, RefreshCw, Play, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 interface DashboardHeaderProps {
   onRefresh: () => void;
@@ -11,11 +12,15 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({ onRefresh }: DashboardHeaderProps) {
   const [ingesting, setIngesting] = useState(false);
+  const router = useRouter();
 
   async function runIngestion() {
     setIngesting(true);
     try {
-      const res = await fetch("/api/ingest/start", { method: "POST" });
+      const res = await fetch("/api/ingest/start", {
+        method: "POST",
+        headers: { "X-SecureCatch-Request": "1" },
+      });
       const data = await res.json() as { message?: string; error?: string; processed?: number; newAlerts?: string[] };
 
       if (!res.ok) {
@@ -39,6 +44,15 @@ export function DashboardHeader({ onRefresh }: DashboardHeaderProps) {
     }
   }
 
+  async function signOut() {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: { "X-SecureCatch-Request": "1" },
+    });
+    router.replace("/login");
+    router.refresh();
+  }
+
   return (
     <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
       <div className="max-w-screen-xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -55,6 +69,10 @@ export function DashboardHeader({ onRefresh }: DashboardHeaderProps) {
           <Button variant="outline" size="sm" onClick={onRefresh}>
             <RefreshCw className="h-4 w-4 mr-1.5" />
             Refresh
+          </Button>
+          <Button variant="ghost" size="sm" onClick={signOut}>
+            <LogOut className="h-4 w-4 mr-1.5" />
+            Sign out
           </Button>
           <Button
             size="sm"

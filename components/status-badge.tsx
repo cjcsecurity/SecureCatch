@@ -7,7 +7,12 @@ const statusConfig: Record<AlertStatus, { label: string; variant: "default" | "s
   PENDING: { label: "Pending", variant: "outline" },
   INGESTED: { label: "Ingested", variant: "secondary" },
   ANALYZING: { label: "Analyzing", variant: "secondary" },
+  ANALYSIS_RUNNING: { label: "Analysis Running", variant: "secondary" },
+  ANALYSIS_FAILED: { label: "Analysis Failed", variant: "destructive" },
   AWAITING_REVIEW: { label: "Awaiting Review", variant: "default" },
+  REMEDIATING: { label: "Remediating", variant: "secondary" },
+  CLOSING: { label: "Closing", variant: "secondary" },
+  ACTION_FAILED: { label: "Action Failed", variant: "destructive" },
   REMEDIATED: { label: "Remediated", variant: "destructive" },
   CLOSED: { label: "Closed (Safe)", variant: "outline" },
 };

@@ -28,42 +28,61 @@ function getJiraConfig() {
     throw new Error("Missing Jira configuration: JIRA_HOST, JIRA_EMAIL, JIRA_API_TOKEN");
   }
 
-  return { host, email, token, projectKey };
+  if (!/^[A-Z][A-Z0-9_]*$/i.test(projectKey)) {
+    throw new Error("JIRA_SECOPS_PROJECT_KEY contains unsupported characters");
+  }
+
+  return { host, email, token, projectKey, phishingJql: process.env.JIRA_PHISHING_JQL };
 }
 
 function getAuthHeader(email: string, token: string): string {
   return `Basic ${Buffer.from(`${email}:${token}`).toString("base64")}`;
 }
 
-/**
- * Fetches all open phishing alert tickets from the SECOPS Jira board.
- * Filter: Reporter = csirt@snapdocs.com OR Summary contains "User-reported phishing"
- */
+/** Builds the Jira query used by ingestion. */
+export function buildPhishingJql(projectKey: string, override?: string): string {
+  if (override?.trim()) return override.trim();
+  return `project = "${projectKey}" AND summary ~ "User-reported phishing" AND statusCategory != Done ORDER BY created DESC`;
+}
+
+/** Fetches up to 500 open phishing alert tickets from Jira Cloud. */
 export async function fetchPhishingTickets(): Promise<JiraTicket[]> {
-  const { host, email, token, projectKey } = getJiraConfig();
+  const { host, email, token, projectKey, phishingJql } = getJiraConfig();
   const auth = getAuthHeader(email, token);
+  const url = `https://${host}/rest/api/3/search/jql`;
+  const jql = buildPhishingJql(projectKey, phishingJql);
+  const issues: Array<Record<string, unknown>> = [];
+  let nextPageToken: string | undefined;
 
-  const jql = encodeURIComponent(
-    `project = "${projectKey}" AND (reporter = "csirt@snapdocs.com" OR summary ~ "User-reported phishing") AND status != Done ORDER BY created DESC`
-  );
+  do {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: auth,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jql,
+        fields: ["id", "key", "summary", "description", "status"],
+        maxResults: 50,
+        ...(nextPageToken ? { nextPageToken } : {}),
+      }),
+    });
 
-  const url = `https://${host}/rest/api/3/search?jql=${jql}&maxResults=50&fields=id,key,summary,description,status`;
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Jira API error ${response.status}: ${errorText.slice(0, 500)}`);
+    }
 
-  const response = await fetch(url, {
-    headers: {
-      Authorization: auth,
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Jira API error ${response.status}: ${errorText}`);
-  }
-
-  const data = await response.json();
-  const issues = data.issues ?? [];
+    const data = (await response.json()) as {
+      issues?: Array<Record<string, unknown>>;
+      nextPageToken?: string;
+      isLast?: boolean;
+    };
+    issues.push(...(data.issues ?? []));
+    nextPageToken = data.isLast === false ? data.nextPageToken : undefined;
+  } while (nextPageToken && issues.length < 500);
 
   return issues.map((issue: Record<string, unknown>) => {
     const fields = issue.fields as Record<string, unknown>;
@@ -123,8 +142,8 @@ function extractTextFromADFNodes(nodes: Record<string, unknown>[]): string {
  *
  * Expected format:
  *   Activity date: Wednesday, Dec 10, 2025, 9:01:48 PM (UTC)
- *   Actor: docusign.prod.pa@snapdocs.com
- *   Reported by: bob.jones@snapdocs.com
+ *   Actor: sender@example.net
+ *   Reported by: analyst@example.com
  */
 export function parseTicketDescription(description: string): ParsedTicketData {
   const actorMatch = description.match(/Actor:\s*([^\s\n]+@[^\s\n]+)/i);
@@ -210,10 +229,9 @@ export async function closeJiraTicket(ticketKey: string): Promise<void> {
   );
 
   if (!closeTransition) {
-    console.warn(
+    throw new Error(
       `No close transition found for ${ticketKey}. Available: ${transitions.map((t) => t.name).join(", ")}`
     );
-    return;
   }
 
   // Apply the transition

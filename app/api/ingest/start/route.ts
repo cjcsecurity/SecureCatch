@@ -9,12 +9,16 @@
  * 5. Stores all data in the database as a PhishingAlert record
  */
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { fetchPhishingTickets, parseTicketDescription } from "@/lib/jira";
 import { findAlertByActor, fetchEmailData } from "@/lib/google";
+import { authorizeApiRequest } from "@/lib/auth";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const denied = await authorizeApiRequest(request, { mutation: true });
+  if (denied) return denied;
+
   const results = {
     processed: 0,
     skipped: 0,

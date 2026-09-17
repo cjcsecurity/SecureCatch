@@ -10,16 +10,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { postJiraComment, closeJiraTicket } from "@/lib/jira";
 import { listAllDomainUsers, trashMessageForUser } from "@/lib/google";
-
-type RemediateAction = "REMEDIATE" | "CLOSE";
+import { authorizeApiRequest } from "@/lib/auth";
+import { evaluateRemediationPolicy, type RemediateAction } from "@/lib/remediation-policy";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await authorizeApiRequest(request, { mutation: true });
+  if (denied) return denied;
+
   const { id } = await params;
-  const body = await request.json() as { action: RemediateAction; note?: string };
-  const { action, note } = body;
+  let body: { action?: unknown; note?: unknown; confirmation?: unknown };
+  try {
+    body = (await request.json()) as { action?: unknown; note?: unknown; confirmation?: unknown };
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  const action = body.action as RemediateAction;
+  const note = typeof body.note === "string" ? body.note.trim().slice(0, 2000) : undefined;
+  const confirmation = typeof body.confirmation === "string" ? body.confirmation.trim() : undefined;
 
   if (!action || !["REMEDIATE", "CLOSE"].includes(action)) {
     return NextResponse.json(
@@ -35,6 +45,36 @@ export async function POST(
       return NextResponse.json({ error: "Alert not found" }, { status: 404 });
     }
 
+    if (action === "REMEDIATE" && !alert.rfc2822MessageId) {
+      return NextResponse.json(
+        { error: "No RFC 2822 Message-ID is available. Run ingestion again before remediation." },
+        { status: 409 }
+      );
+    }
+
+    const policy = evaluateRemediationPolicy({
+      action,
+      status: alert.status,
+      ticketKey: alert.jiraTicketKey,
+      confirmation,
+      destructiveActionsEnabled: process.env.SECURECATCH_ENABLE_DESTRUCTIVE_ACTIONS === "true",
+      hasAnalysis: Boolean(alert.aiClassification && alert.aiReasoning),
+    });
+    if (!policy.ok || !policy.claimedStatus) {
+      return NextResponse.json({ error: policy.message }, { status: policy.status });
+    }
+
+    const claimed = await db.phishingAlert.updateMany({
+      where: { id, status: "AWAITING_REVIEW" },
+      data: { status: policy.claimedStatus },
+    });
+    if (claimed.count !== 1) {
+      return NextResponse.json(
+        { error: "This alert is already being handled or its state changed. Refresh before retrying." },
+        { status: 409 }
+      );
+    }
+
     if (action === "REMEDIATE") {
       return await handleRemediate(alert, note);
     } else {
@@ -42,8 +82,16 @@ export async function POST(
     }
   } catch (error) {
     console.error("Remediation error:", error);
+    try {
+      await db.phishingAlert.updateMany({
+        where: { id, status: { in: ["REMEDIATING", "CLOSING"] } },
+        data: { status: "ACTION_FAILED" },
+      });
+    } catch (statusError) {
+      console.error("Failed to record action failure:", statusError);
+    }
     return NextResponse.json(
-      { error: `Remediation failed: ${String(error)}` },
+      { error: "Action failed. Review server logs before attempting any manual follow-up." },
       { status: 500 }
     );
   }
@@ -61,37 +109,45 @@ async function handleRemediate(
   },
   note?: string
 ) {
-  if (!alert.rfc2822MessageId) {
-    return NextResponse.json(
-      { error: "No RFC 2822 Message-ID available for domain-wide search. Run ingestion first." },
-      { status: 400 }
-    );
+  const messageId = alert.rfc2822MessageId;
+  if (!messageId) {
+    throw new Error("Remediation reached execution without an RFC 2822 Message-ID");
   }
 
   // Step 1: Get all domain users
-  let allUsers: string[] = [];
-  try {
-    allUsers = await listAllDomainUsers();
-  } catch (error) {
-    return NextResponse.json(
-      { error: `Failed to list domain users: ${String(error)}` },
-      { status: 500 }
-    );
-  }
+  const allUsers = await listAllDomainUsers();
 
   // Step 2: Search each user's inbox and trash the malicious email
   const affectedUsers: string[] = [];
+  const failedUsers: string[] = [];
   let usersSearched = 0;
 
   for (const userEmail of allUsers) {
-    const found = await trashMessageForUser(userEmail, alert.rfc2822MessageId);
+    const result = await trashMessageForUser(userEmail, messageId);
     usersSearched++;
-    if (found) {
+    if (result === "trashed") {
       affectedUsers.push(userEmail);
+    } else if (result === "error") {
+      failedUsers.push(userEmail);
     }
   }
 
-  const purgeResults = { usersSearched, usersAffected: affectedUsers };
+  const purgeResults = { usersSearched, usersAffected: affectedUsers, usersFailed: failedUsers };
+
+  // Persist the purge outcome before updating Jira so partial external work is
+  // visible even if a later step fails.
+  await db.phishingAlert.update({
+    where: { id: alert.id },
+    data: {
+      analystAction: "REMEDIATE",
+      analystNote: note ?? null,
+      purgeResults: JSON.stringify(purgeResults),
+    },
+  });
+
+  if (failedUsers.length > 0) {
+    throw new Error(`Domain-wide purge could not verify ${failedUsers.length} mailbox(es)`);
+  }
 
   // Step 3: Post Jira comment and close ticket
   const aiSummary = alert.aiClassification
@@ -106,18 +162,13 @@ async function handleRemediate(
 ${aiSummary}
 
 *Follow up actions taken*
-Executed domain-wide search for RFC2822 Message-ID: ${alert.rfc2822MessageId}
+Executed domain-wide search for RFC2822 Message-ID: ${messageId}
 Message successfully trashed from ${affectedUsers.length} affected user inbox(es) out of ${usersSearched} users searched.
 Affected users: ${affectedUsers.length > 0 ? affectedUsers.join(", ") : "None found"}
 ${note ? `\nAnalyst Note: ${note}` : ""}`;
 
-  try {
-    await postJiraComment(alert.jiraTicketKey, jiraComment);
-    await closeJiraTicket(alert.jiraTicketKey);
-  } catch (jiraError) {
-    console.warn("Jira update failed (non-fatal):", jiraError);
-    // Continue — the purge already happened
-  }
+  await postJiraComment(alert.jiraTicketKey, jiraComment);
+  await closeJiraTicket(alert.jiraTicketKey);
 
   // Step 4: Update the database
   const updated = await db.phishingAlert.update({
@@ -127,7 +178,6 @@ ${note ? `\nAnalyst Note: ${note}` : ""}`;
       analystNote: note ?? null,
       status: "REMEDIATED",
       remediatedAt: new Date(),
-      purgeResults: JSON.stringify(purgeResults),
     },
   });
 
@@ -152,12 +202,8 @@ Classification: ${alert.aiClassification ?? "Not analyzed"}
 ${note ? `\nAnalyst Note: ${note}` : ""}
 No remediation actions taken.`;
 
-  try {
-    await postJiraComment(alert.jiraTicketKey, jiraComment);
-    await closeJiraTicket(alert.jiraTicketKey);
-  } catch (jiraError) {
-    console.warn("Jira update failed (non-fatal):", jiraError);
-  }
+  await postJiraComment(alert.jiraTicketKey, jiraComment);
+  await closeJiraTicket(alert.jiraTicketKey);
 
   const updated = await db.phishingAlert.update({
     where: { id: alert.id },

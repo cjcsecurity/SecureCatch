@@ -5,11 +5,15 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { authorizeApiRequest } from "@/lib/auth";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await authorizeApiRequest(request);
+  if (denied) return denied;
+
   const { id } = await params;
 
   try {

@@ -6,7 +6,12 @@ export type AlertStatus =
   | "PENDING"
   | "INGESTED"
   | "ANALYZING"
+  | "ANALYSIS_RUNNING"
+  | "ANALYSIS_FAILED"
   | "AWAITING_REVIEW"
+  | "REMEDIATING"
+  | "CLOSING"
+  | "ACTION_FAILED"
   | "REMEDIATED"
   | "CLOSED";
 
@@ -65,5 +70,6 @@ export interface AlertDetail extends AlertSummary {
   purgeResults: {
     usersSearched: number;
     usersAffected: string[];
+    usersFailed?: string[];
   } | null;
 }
